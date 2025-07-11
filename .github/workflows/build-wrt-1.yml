@@ -1,0 +1,214 @@
+name: Build WRT - Step 1 (Preparation & SSH & Config Backup)
+run-name: Build Step 1 - ${{ inputs.model }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        required: true
+        description: Device Model
+        type: choice
+        default: jdcloud_ipq60xx_immwrt
+        options:
+          - jdcloud_ipq60xx_immwrt
+      runs-on:
+        required: true
+        description: Runs on...
+        type: choice
+        default: ubuntu-22.04
+        options:
+          - ubuntu-20.04
+          - ubuntu-22.04
+      enable_ssh:
+        required: false
+        description: Enable SSH connection for menuconfig
+        type: boolean
+        default: false
+
+# 添加权限配置
+permissions:
+  contents: read
+  actions: read
+  packages: write
+  id-token: write
+        
+env:
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+jobs:
+  prepare:
+    runs-on: ${{ inputs.runs-on }}
+    container:
+      image: ghcr.io/ran-xing/image-builder:latest
+      # options: --privileged
+    steps:
+    #   - name: Maximize build space
+    #     uses: AdityaGarg8/remove-unwanted-software@v5
+    #     with:
+    #       remove-dotnet: "true"
+    #       remove-android: "true"
+    #       remove-haskell: "true"
+    #       remove-codeql: "true"
+    #       remove-docker-images: "true"
+    #       remove-large-packages: "true"
+    #       remove-cached-tools: "true"
+    #       remove-swapfile: "true"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Pre Clone
+        run: ./pre_clone_action.sh ${{ inputs.model }}
+
+      - name: Cache ccache, staging_dir, dl # TODO 修改缓存
+        uses: actions/cache@v4
+        with:
+          path: |
+            ./action_build/.ccache
+            ./action_build/staging_dir
+            ./action_build/dl
+          key: ${{ runner.os }}-${{ env.BUILD_DIR }}-${{ hashFiles('**/repo_flag') }}-step1
+          restore-keys: |
+            ${{ runner.os }}-${{ env.BUILD_DIR }}-
+
+      - name: Run update.sh and prepare config
+        shell: bash
+        run: |
+          BASE_PATH="${PWD}"
+
+          Dev="${{ inputs.model }}"
+          Build_Mod=$2
+
+          CONFIG_FILE="$BASE_PATH/deconfig/$Dev.config"
+          INI_FILE="$BASE_PATH/compilecfg/$Dev.ini"
+
+          if [[ ! -f $CONFIG_FILE ]]; then
+              echo "Config not found: $CONFIG_FILE" >> $GITHUB_STEP_SUMMARY
+              exit 1
+          fi
+
+          if [[ ! -f $INI_FILE ]]; then
+              echo "INI file not found: $INI_FILE" >> $GITHUB_STEP_SUMMARY
+              exit 1
+          fi
+
+          read_ini_by_key() {
+              local key=$1
+              awk -F"=" -v key="$key" '$1 == key {print $2}' "$INI_FILE"
+          }
+
+          REPO_URL=$(read_ini_by_key "REPO_URL")
+          REPO_BRANCH=$(read_ini_by_key "REPO_BRANCH")
+          REPO_BRANCH=${REPO_BRANCH:-main}
+          BUILD_DIR=$(read_ini_by_key "BUILD_DIR")
+          COMMIT_HASH=$(read_ini_by_key "COMMIT_HASH")
+          COMMIT_HASH=${COMMIT_HASH:-none}
+
+          if [[ -d $BASE_PATH/action_build ]]; then
+              BUILD_DIR="action_build"
+          fi
+
+          $BASE_PATH/update.sh "$REPO_URL" "$REPO_BRANCH" "$BASE_PATH/$BUILD_DIR" "$COMMIT_HASH"
+
+          \cp -f "$CONFIG_FILE" "$BASE_PATH/$BUILD_DIR/.config"
+
+          echo "BASE_PATH=$BASE_PATH" >> $GITHUB_ENV
+          echo "BUILD_DIR=$BUILD_DIR" >> $GITHUB_ENV
+          echo "CONFIG_FILE=$CONFIG_FILE" >> $GITHUB_ENV
+          export BUILD_DATE=$(TZ=UTC-8 date +"%y.%m.%d_%H.%M.%S")
+          echo "BUILD_DATE=$BUILD_DATE" >> $GITHUB_ENV
+
+          # 保存关键变量到 build_env 文件，供后续步骤复用
+          cat > build_env <<EOF
+          BUILD_DIR=$BUILD_DIR
+          BUILD_DATE=$BUILD_DATE
+          MODEL=${{ inputs.model }}
+          REPO_URL=$REPO_URL
+          REPO_BRANCH=$REPO_BRANCH
+          COMMIT_HASH=$COMMIT_HASH
+          EOF
+
+      - name: SSH connection to Actions (before defconfig)
+        uses: mxschmitt/action-tmate@v3
+        if: github.event_name == 'workflow_dispatch' && inputs.enable_ssh == true
+        timeout-minutes: 180
+        with:
+          limit-access-to-actor: true
+
+      - name: Backup user modified config
+        if: github.event_name == 'workflow_dispatch' && inputs.enable_ssh == true
+        run: |
+          mkdir config_backup
+          \cp -rf ./${{ env.BUILD_DIR }}/.config config_backup/.config.user_modified
+          \cp -rf ./${{ env.BUILD_DIR }}/.config.old config_backup/.config.user_modified.old
+
+      - name: Make defconfig
+        run: |
+          cd ./${{ env.BUILD_DIR }}
+          make defconfig
+
+      - name: Check config changes
+        if: github.event_name == 'workflow_dispatch' && inputs.enable_ssh == true
+        shell: bash
+        run: |
+          ORIGINAL_CONFIG="./deconfig/${{ inputs.model }}.config"
+          MODIFIED_CONFIG="./${{ env.BUILD_DIR }}/.config"
+          
+          if [ -f "$MODIFIED_CONFIG" ]; then
+            if diff "$ORIGINAL_CONFIG" "$MODIFIED_CONFIG" > /dev/null; then
+              echo "CONFIG_CHANGED=false" >> $GITHUB_ENV
+            else
+              echo "CONFIG_CHANGED=true" >> $GITHUB_ENV
+              \cp -rf .config ../config_backup/.config.defconfig
+              \cp -rf .config.old ../config_backup/.config.defconfig.old
+              cd ..
+              zip -r config.zip config_backup/
+            fi
+          else
+            echo "CONFIG_CHANGED=false" >> $GITHUB_ENV
+          fi
+
+      - name: Upload Config Artifacts (if changed)
+        if: github.event_name == 'workflow_dispatch' && inputs.enable_ssh == true && env.CONFIG_CHANGED == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: config-${{ env.BUILD_DATE }}-${{ inputs.model }}
+          path: ./config.zip
+          retention-days: 7
+
+      - name: Build (before download)
+        shell: bash
+        run: |
+          # x86_64 特殊 sed
+          if grep -qE "^CONFIG_TARGET_x86_64=y" "${{ env.BUILD_DATE }}"; then
+            DISTFEEDS_PATH="${{ env.BASE_PATH }}/${{ env.BUILD_DIR }}/package/emortal/default-settings/files/99-distfeeds.conf"
+            if [ -d "${DISTFEEDS_PATH%/*}" ] && [ -f "$DISTFEEDS_PATH" ]; then
+              sed -i 's/aarch64_cortex-a53/x86_64/g' "$DISTFEEDS_PATH"
+            fi
+          fi
+
+          if [[ $Build_Mod == "debug" ]]; then
+            exit 0
+          fi
+
+          # 清理旧固件
+          TARGET_DIR="${{ env.BASE_PATH }}/${{ env.BUILD_DIR }}/bin/targets"
+          if [[ -d $TARGET_DIR ]]; then
+            find "$TARGET_DIR" -type f \( -name "*.bin" -o -name "*.manifest" -o -name "*efi.img.gz" -o -name "*.itb" -o -name "*.fip" -o -name "*.ubi" -o -name "*rootfs.tar.gz" \) -exec rm -f {} +
+          fi
+          
+          tar -czf step1-${{ inputs.model }}.tar.gz ./*
+
+      - name: Upload Step 1 Artifacts
+        id: artifact-upload-step
+        uses: actions/upload-artifact@v4
+        with:
+          name: step1-${{ inputs.model }}
+          path: step1-${{ inputs.model }}.tar.gz
+          retention-days: 7
+
+      - name: Output artifact info to summary
+        run: |
+          echo "### 本次构建生成的 Artifact" >> $GITHUB_STEP_SUMMARY
+          echo "- 名称: step1-${{ inputs.model }}" >> $GITHUB_STEP_SUMMARY
+          echo "- ID: ${{ steps.artifact-upload-step.outputs.artifact-id }}" >> $GITHUB_STEP_SUMMARY

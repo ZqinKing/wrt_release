@@ -1,0 +1,156 @@
+name: Build WRT - Step 3 (Final Build)
+run-name: Build Step 3 - ${{ inputs.model }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        required: true
+        description: Device Model
+        type: choice
+        default: jdcloud_ipq60xx_immwrt
+        options:
+          - jdcloud_ipq60xx_immwrt
+      runs-on:
+        required: true
+        description: Runs on...
+        type: choice
+        default: ubuntu-22.04
+        options:
+          - ubuntu-20.04
+          - ubuntu-22.04
+
+# 添加权限配置
+permissions:
+  contents: read
+  actions: read
+  packages: write
+  id-token: write
+
+env:
+  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+jobs:
+  final_build:
+    runs-on: ${{ inputs.runs-on }}
+    container:
+      image: ghcr.io/ran-xing/image-builder:latest
+      # options: --privileged # 如有特殊需求
+    steps:
+      # - name: Maximize build space
+      #   uses: AdityaGarg8/remove-unwanted-software@v5
+      #   with:
+      #     remove-dotnet: "true"
+      #     remove-android: "true"
+      #     remove-haskell: "true"
+      #     remove-codeql: "true"
+      #     remove-docker-images: "true"
+      #     remove-large-packages: "true"
+      #     remove-cached-tools: "true"
+      #     remove-swapfile: "true"
+      - name: Get Action ID step2-${{ inputs.model }}
+        id: get-run-id
+        run: |
+          RUN_ID=`gh run --repo ${{ github.repository }} list --workflow build-wrt-2.yml --json databaseId --jq .[0].databaseId`
+          echo "run-id=${RUN_ID}" >> "$GITHUB_OUTPUT"
+          
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: step2-${{ inputs.model }}
+          github-token: ${{ env.GH_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.get-run-id.outputs.run-id }}
+
+      - name: Initialization Values
+        shell: bash
+        run: |
+          tar -xzf step2-${{ inputs.model }}.tar.gz
+          rm -f step2-${{ inputs.model }}.tar.gz
+          if [ -f ./build_env ]; then
+            while IFS='=' read -r key value; do
+              [[ -z "$key" || "$key" =~ ^# ]] && continue
+              echo "${key}=${value}" >> $GITHUB_ENV
+            done < ./build_env
+          fi
+          if [ ! -d "./${{ env.BUILD_DIR }}" ]; then
+            echo "未找到Step 2的完整项目, 请先运行Step 2" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+      - name: Cache Dependencies
+        shell: bash
+        uses: actions/cache@v4
+        with:
+          path: |
+            ./${{ env.BUILD_DIR }}/.ccache
+            ./${{ env.BUILD_DIR }}/staging_dir
+            ./${{ env.BUILD_DIR }}/dl
+          key: ${{ inputs.runs-on }}-${{ hashFiles('**/repo_flag') }}-${{ env.BUILD_DATE }}-step3
+          restore-keys: |
+            ${{ inputs.runs-on }}-${{ hashFiles('**/repo_flag') }}-
+
+      - name: Refresh the cache
+        shell: bash
+        run: |
+          if [ -d "./${{ env.BUILD_DIR }}/staging_dir" ]; then
+            find "./${{ env.BUILD_DIR }}/staging_dir" -type d -name "stamp" -not -path "*target*" | while read -r dir; do
+                find "$dir" -type f -exec touch {} +
+            done
+          fi
+
+      - name: Clean old firmware
+        shell: bash
+        run: |
+          cd ./${{ env.BUILD_DIR }}
+          if [[ -d ${{ env.TARGET_DIR }} ]]; then
+            find "${{ env.TARGET_DIR }}" -type f \( -name "*.bin" -o -name "*.manifest" -o -name "*efi.img.gz" -o -name "*.itb" -o -name "*.fip" -o -name "*.ubi" -o -name "*rootfs.tar.gz" \) -exec rm -f {} +
+          fi
+
+      - name: Build Firmware
+        run: |
+          cd ./${{ env.BUILD_DIR }}
+          chown -R builder:builder .
+          # 使用多线程编译，失败时降级到单线程
+          su builder -c "make -j$(($(nproc) + 1)) || make -j1 V=s"
+
+      - name: Collect Firmware
+        shell: bash
+        run: |
+          cd ./${{ env.BUILD_DIR }}
+          FIRMWARE_DIR="${{ env.BASE_PATH }}/firmware"
+          \rm -rf "$FIRMWARE_DIR"
+          mkdir -p "$FIRMWARE_DIR"
+          find "${{ env.TARGET_DIR }}" -type f \( -name "*.bin" -o -name "*.manifest" -o -name "*efi.img.gz" -o -name "*.itb" -o -name "*.fip" -o -name "*.ubi" -o -name "*rootfs.tar.gz" \) -exec cp -f {} "$FIRMWARE_DIR/" \;
+          \rm -f "$FIRMWARE_DIR/Packages.manifest" 2>/dev/null
+
+      - name: Clean build directory
+        run: |
+          cd ./${{ env.BUILD_DIR }}
+          make clean
+
+      - name: Delete Old Cache
+        run: |
+          # 获取缓存列表并删除
+          gh cache list --key ${{ inputs.runs-on }}-${{ hashFiles('**/repo_flag') }}- --json key --jq '.[] | .key' | while read -r key; do
+            gh cache delete "$key"
+          done
+          # 输出缓存状态
+          echo "========cache status========"
+          echo "ccache: $(du -sh ./${{ env.BUILD_DIR }}/.ccache 2>/dev/null | cut -f 1 || echo 'N/A')"
+          echo "staging: $(du -sh ./${{ env.BUILD_DIR }}/staging_dir 2>/dev/null | cut -f 1 || echo 'N/A')"
+          echo "dl: $(du -sh ./${{ env.BUILD_DIR }}/dl 2>/dev/null | cut -f 1 || echo 'N/A')"
+
+      - name: Machine Information
+        run: |
+          echo "=============================================="
+          lscpu | grep -E "name|Core|Thread"
+          echo "=============================================="
+          df -h
+          echo "=============================================="
+
+      - name: Upload Firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.BUILD_DATE }}_${{ inputs.model }}
+          path: ./firmware/*.* 
