@@ -379,7 +379,7 @@ add_ax6600_led() {
 
 set_kernel_size() {
   #修改jdc ax1800 pro 的内核大小为12M
-  image_file='$BUILD_DIR/target/linux/qualcommax/image/ipq60xx.mk'
+  image_file="$BUILD_DIR/target/linux/qualcommax/image/ipq60xx.mk"
   sed -i "/^define Device\/jdcloud_re-ss-01/,/^endef/ { /KERNEL_SIZE := 6144k/s//KERNEL_SIZE := 12288k/ }" $image_file
   sed -i "/^define Device\/jdcloud_re-cs-02/,/^endef/ { /KERNEL_SIZE := 6144k/s//KERNEL_SIZE := 12288k/ }" $image_file
   sed -i "/^define Device\/jdcloud_re-cs-07/,/^endef/ { /KERNEL_SIZE := 6144k/s//KERNEL_SIZE := 12288k/ }" $image_file
