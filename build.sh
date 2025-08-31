@@ -53,12 +53,12 @@ apply_config() {
     if grep -qE "^CONFIG_PACKAGE_luci-app-daed=y" "$CONFIG_FILE"; then
         cat "$BASE_PATH/deconfig/epf.config" >> "$BASE_PATH/$BUILD_DIR/.config"
         # 如果是 ipq60xx 或 ipq807x 平台，则增加内核选项
-         if grep -qE "(ipq60xx)" "$BASE_PATH/$BUILD_DIR/.config"; then
-           # cat "$BASE_PATH/deconfig/epf_kernel.config" >> "$BUILD_DIR/target/linux/qualcommax/qualcommax_ipq60xx/config-default"
-         fi
-         if grep -qE "(ipq807x)" "$BASE_PATH/$BUILD_DIR/.config"; then
-           # cat "$BASE_PATH/deconfig/epf_kernel.config" >> "$BUILD_DIR/target/linux/qualcommax/qualcommax_ipq807x/config-default"
-         fi
+        # if grep -qE "(ipq60xx)" "$BASE_PATH/$BUILD_DIR/.config"; then
+        #    cat "$BASE_PATH/deconfig/epf_kernel.config" >> "$BUILD_DIR/target/linux/qualcommax/qualcommax_ipq60xx/config-default"
+        # fi
+        # if grep -qE "(ipq807x)" "$BASE_PATH/$BUILD_DIR/.config"; then
+        #   # cat "$BASE_PATH/deconfig/epf_kernel.config" >> "$BUILD_DIR/target/linux/qualcommax/qualcommax_ipq807x/config-default"
+        # fi
         
     fi
 
