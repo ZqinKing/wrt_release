@@ -33,3 +33,32 @@ deconfig/jdcloud_ax3000_nwrt.config
 deconfig/link_nn6000v2_nwrt.config
 deconfig/aliyun_ap8220_nwrt.config
 compilecfg/aliyum_ap8220_nwrt.ini
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+dev-debug.log
+# Dependency directories
+node_modules/
+# Environment variables
+.env
+# Editor directories and files
+.idea
+.vscode
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+# OS specific
+.DS_Store
+
+# Task files
+# tasks.json
+# tasks/ 
+.env.example
+.clinerules/
+.taskmaster/

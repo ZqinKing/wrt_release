@@ -1,0 +1,167 @@
+{
+  "repo": {
+    "url": "",
+    "branch": "",
+    "build_dir": "openwrt",
+    "commit_hash": "none"
+  },
+  "network": {
+    "lan_addr": "192.168.1.1"
+  },
+  "theme": {
+    "set": "argon"
+  },
+  "feeds": {
+    "conf_file": "feeds.conf.default",
+    "add": [
+      {
+        "name": "small8",
+        "url": "https://github.com/kenzok8/small-package"
+      }
+    ],
+    "remove_lines": [
+      "^#",
+      "packages_ext",
+      "nss_packages"
+    ]
+  },
+  "packages": {
+    "golang": {
+      "repo": "https://github.com/sbwml/packages_lang_golang",
+      "branch": "25.x"
+    },
+    "remove": [
+      "luci-app-passwall", "luci-app-ddns-go", "luci-app-rclone", "luci-app-ssr-plus",
+      "luci-app-vssr", "luci-app-daed", "luci-app-dae", "luci-app-alist", "luci-app-homeproxy",
+      "luci-app-haproxy-tcp", "luci-app-openclash", "luci-app-mihomo", "luci-app-appfilter",
+      "luci-app-msd_lite",
+      "haproxy", "xray-core", "xray-plugin", "dns2socks", "alist", "hysteria",
+      "mosdns", "adguardhome", "ddns-go", "naiveproxy", "shadowsocks-rust",
+      "sing-box", "v2ray-core", "v2ray-geodata", "v2ray-plugin", "tuic-client",
+      "chinadns-ng", "ipt2socks", "tcping", "trojan-plus", "simple-obfs", "shadowsocksr-libev",
+      "dae", "daed", "mihomo", "geoview", "tailscale", "open-app-filter", "msd_lite",
+      "cups",
+      "ppp", "firewall", "daed-next", "libnftnl", "nftables", "dnsmasq",
+      "opkg", "smartdns", "luci-app-smartdns", "easytier"
+    ],
+    "install_feeds": {
+      "small8": [
+        "xray-core", "xray-plugin", "dns2tcp", "dns2socks", "haproxy", "hysteria",
+        "naiveproxy", "shadowsocks-rust", "sing-box", "v2ray-core", "v2ray-geodata", "geoview", "v2ray-plugin",
+        "tuic-client", "chinadns-ng", "ipt2socks", "tcping", "trojan-plus", "simple-obfs", "shadowsocksr-libev",
+        "luci-app-passwall", "v2dat", "mosdns", "luci-app-mosdns", "adguardhome", "luci-app-adguardhome", "ddns-go",
+        "luci-app-ddns-go", "taskd", "luci-lib-xterm", "luci-lib-taskd", "luci-app-store", "quickstart",
+        "luci-app-quickstart", "luci-app-istorex", "luci-app-cloudflarespeedtest", "netdata", "luci-app-netdata",
+        "lucky", "luci-app-lucky", "luci-app-openclash", "luci-app-homeproxy", "luci-app-amlogic", "nikki", "luci-app-nikki",
+        "tailscale", "luci-app-tailscale", "oaf", "open-app-filter", "luci-app-oaf", "easytier", "luci-app-easytier",
+        "msd_lite", "luci-app-msd_lite", "cups", "luci-app-cupsd",
+        "fullconenat-nft", "fullconenat"
+      ]
+    },
+    "custom_add": [
+        {
+            "name": "luci-app-athena-led",
+            "repo": "https://github.com/NONGFAH/luci-app-athena-led.git",
+            "path": "package/emortal/luci-app-athena-led"
+        },
+        {
+            "name": "homeproxy",
+            "repo": "https://github.com/immortalwrt/homeproxy.git",
+            "path": "feeds/small8/luci-app-homeproxy"
+        },
+        {
+            "name": "luci-app-timecontrol",
+            "repo": "https://github.com/sirpdboy/luci-app-timecontrol.git",
+            "path": "package/luci-app-timecontrol"
+        },
+        {
+            "name": "openwrt-gecoosac",
+            "repo": "https://github.com/lwb1978/openwrt-gecoosac.git",
+            "path": "package/openwrt-gecoosac"
+        },
+        {
+            "name": "luci-app-adguardhome",
+            "repo": "https://github.com/ZqinKing/luci-app-adguardhome.git",
+            "path": "package/feeds/small8/luci-app-adguardhome"
+        },
+        {
+            "name": "smartdns",
+            "repo": "https://github.com/ZqinKing/openwrt-smartdns.git",
+            "path": "feeds/packages/net/smartdns"
+        },
+        {
+            "name": "luci-app-smartdns",
+            "repo": "https://github.com/pymumu/luci-app-smartdns.git",
+            "path": "feeds/luci/applications/luci-app-smartdns"
+        },
+        {
+            "name": "luci-app-diskman",
+            "repo": "https://github.com/lisaac/luci-app-diskman.git",
+            "path": "feeds/luci/applications/luci-app-diskman",
+            "sparse_checkout": ["applications/luci-app-diskman"]
+        },
+        {
+            "name": "luci-app-quickfile",
+            "repo": "https://github.com/sbwml/luci-app-quickfile.git",
+            "path": "package/emortal/quickfile"
+        },
+        {
+            "name": "luci-theme-argon",
+            "repo": "https://github.com/ZqinKing/luci-theme-argon.git",
+            "path": "feeds/luci/themes/luci-theme-argon"
+        }
+    ]
+  },
+  "patches": {
+      "ath11k_fw": "https://raw.githubusercontent.com/VIKINGYFY/immortalwrt/refs/heads/main/package/firmware/ath11k-firmware/Makefile",
+      "tcping": "https://raw.githubusercontent.com/xiaorouji/openwrt-passwall-packages/refs/heads/main/tcping/Makefile",
+      "istore_backend": "https://gist.githubusercontent.com/puteulanus/1c180fae6bccd25e57eb6d30b7aa28aa/raw/istore_backend.lua"
+  },
+  "local_patches": [
+      {
+          "src": "patches/990_set_argon_primary",
+          "dest": "package/base-files/files/etc/uci-defaults/990_set_argon_primary",
+          "mode": "544"
+      },
+      {
+          "src": "patches/991_custom_settings",
+          "dest": "package/base-files/files/etc/uci-defaults/991_custom_settings",
+          "mode": "544"
+      },
+      {
+          "src": "patches/992_set-wifi-uci.sh",
+          "dest": "package/base-files/files/etc/uci-defaults/992_set-wifi-uci.sh",
+          "mode": "544"
+      },
+      {
+          "src": "patches/tempinfo",
+          "dest": "package/emortal/autocore/files/tempinfo",
+          "mode": "644"
+      },
+      {
+          "src": "patches/999-chanage-default-leaseduration.patch",
+          "dest": "feeds/packages/net/miniupnpd/patches/999-chanage-default-leaseduration.patch",
+          "mode": "644"
+      },
+      {
+          "src": "patches/smp_affinity",
+          "dest": "target/linux/qualcommax/base-files/etc/init.d/smp_affinity",
+          "mode": "755"
+      },
+      {
+          "src": "patches/cpuusage",
+          "dest": "target/linux/qualcommax/base-files/sbin/cpuusage",
+          "mode": "755"
+      },
+      {
+          "src": "patches/hnatusage",
+          "dest": "target/linux/mediatek/filogic/base-files/sbin/cpuusage",
+          "mode": "755"
+      },
+      {
+          "src": "patches/nss_diag.sh",
+          "dest": "package/kernel/mac80211/files/nss_diag.sh",
+          "mode": "755"
+      }
+  ]
+}
