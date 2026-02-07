@@ -8,7 +8,7 @@ on:
         required: true
         description: Device Model
         type: choice
-        default: jdcloud_ipq60xx_immwrt
+        default: link_nn6000v2_immwrt
         options:
           - aliyun_ap8220_immwrt
           - cmcc_rax3000m_immwrt
