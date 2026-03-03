@@ -165,7 +165,7 @@ add_timecontrol() {
 
 add_gecoosac() {
     local gecoosac_dir="$BUILD_DIR/package/openwrt-gecoosac"
-    local repo_url="https://github.com/lwb1978/openwrt-gecoosac.git"
+    local repo_url="https://github.com/laipeng668/luci-app-gecoosac.git"
     rm -rf "$gecoosac_dir" 2>/dev/null
     echo "正在添加 openwrt-gecoosac..."
     if ! git clone --depth 1 "$repo_url" "$gecoosac_dir"; then
