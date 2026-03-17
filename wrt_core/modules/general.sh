@@ -1,70 +1,88 @@
 #!/usr/bin/env bash
 # Module: General Preparation
 
-# --- 基础变量初始化 (建议添加) ---
+# --- 基础变量初始化 ---
+# 确保在没有外部变量传入时也能安全运行
 BUILD_DIR="${BUILD_DIR:-$(pwd)}"
 REPO_BRANCH="${REPO_BRANCH:-main}"
 COMMIT_HASH="${COMMIT_HASH:-none}"
 
+# 1. 克隆仓库逻辑
 clone_repo() {
     if [[ ! -d "$BUILD_DIR" ]]; then
-        echo "克隆仓库: $REPO_URL 分支: $REPO_BRANCH"
-        # 增加引用保护路径，防止空格导致失败
+        echo "Step: 克隆仓库 $REPO_URL 分支: $REPO_BRANCH"
         if ! git clone --depth 1 -b "$REPO_BRANCH" "$REPO_URL" "$BUILD_DIR"; then
-            echo "错误：克隆仓库 $REPO_URL 失败" >&2
+            echo "Error: 克隆仓库失败，请检查网络或 URL: $REPO_URL" >&2
             exit 1
         fi
     fi
 }
 
+# 2. 清理环境逻辑
 clean_up() {
+    echo "Step: 正在清理编译临时文件..."
     if [[ ! -d "$BUILD_DIR" ]]; then
-        echo "Build directory $BUILD_DIR does not exist"
-        return
+        echo "Warning: 目录 $BUILD_DIR 不存在，跳过清理"
+        return 0
     fi
     
-    # 始终使用绝对路径或在子 shell 中操作，防止 cd 失败后 rm 删错地方
-    cd "$BUILD_DIR" || { echo "无法进入目录 $BUILD_DIR"; return 1; }
+    # 使用 pushd 确保路径切换安全，不会因为 cd 失败而删错目录
+    pushd "$BUILD_DIR" > /dev/null || return 1
 
-    echo "正在清理临时文件和配置..."
-    
-    # 使用强制删除但避免通配符报错
-    [ -f ".config" ] && rm -f ".config"
-    [ -d "tmp" ] && rm -rf "tmp"
-    
-    # 修正：rm -rf "logs/*" 可能因为找不到文件报错，直接删目录或清空内容
-    if [[ -d "logs" ]]; then
-        rm -rf logs
-        mkdir -p logs
+    # 清理常见的残留配置和临时文件
+    rm -rf .config tmp logs
+    mkdir -p tmp logs
+
+    # 执行 feeds 清理（如果脚本存在）
+    if [[ -x "scripts/feeds" ]]; then
+        ./scripts/feeds clean -a
     fi
 
-    if [[ -d "feeds" ]]; then
-        # 确保使用当前源码内的 feeds 脚本
-        ./scripts/feeds clean
-    fi
+    # 特殊处理：针对 IPQ60xx 等机型，清理可能导致 NSS 冲突的工具链残余
+    [ -d "staging_dir" ] && find staging_dir -name ".built" -delete
 
-    mkdir -p "tmp"
-    echo "1" > "tmp/.build"
+    popd > /dev/null
 }
 
+# 3. 重置并拉取源码
 reset_feeds_conf() {
-    # 确保在正确的目录下操作
-    cd "$BUILD_DIR" || exit 1
+    echo "Step: 正在更新源码并重置状态..."
+    pushd "$BUILD_DIR" > /dev/null || exit 1
 
-    echo "重置仓库状态到 $REPO_BRANCH..."
-    
-    # 1. 强制回退并清理未跟踪文件
-    git reset --hard "origin/$REPO_BRANCH"
-    git clean -f -d
-    
-    # 2. 拉取最新代码
-    if ! git pull; then
-        echo "警告：git pull 失败，可能存在网络问题或本地冲突"
+    # 获取远程最新状态并强制重置，防止本地改动干扰
+    git fetch --all --depth 1
+    echo "重置到 origin/$REPO_BRANCH"
+    if ! git reset --hard "origin/$REPO_BRANCH"; then
+        echo "Warning: 重置到远程分支失败，尝试重置本地分支"
+        git reset --hard "$REPO_BRANCH"
     fi
+    
+    git clean -f -d
 
-    # 3. 如果指定了特定的 Commit，则切换
+    # 如果指定了特定 Commit 则切换
     if [[ "$COMMIT_HASH" != "none" && -n "$COMMIT_HASH" ]]; then
         echo "切换到特定提交: $COMMIT_HASH"
         git checkout "$COMMIT_HASH"
+    fi
+
+    popd > /dev/null
+}
+
+# 4. 修复之前报错缺失的函数 (CRITICAL FIX)
+remove_tweaked_packages() {
+    local target_mk="$BUILD_DIR/include/target.mk"
+    echo "Step: 检查并移除 target.mk 中的默认 tweak 软件包..."
+    
+    if [[ -f "$target_mk" ]]; then
+        # 检查是否存在定义，存在则用 sed 注释掉
+        if grep -q "DEFAULT_PACKAGES\.tweak" "$target_mk"; then
+            # 使用 # 注释掉该行，防止编译时引入冲突的包
+            sed -i 's/DEFAULT_PACKAGES += $(DEFAULT_PACKAGES.tweak)/# DEFAULT_PACKAGES += $(DEFAULT_PACKAGES.tweak)/g' "$target_mk"
+            echo "Success: 已成功注释 target.mk 中的 Tweak 软件包"
+        else
+            echo "Skip: target.mk 中未发现 Tweak 包定义，无需修改"
+        fi
+    else
+        echo "Warning: 文件 $target_mk 不存在，跳过该步骤"
     fi
 }
