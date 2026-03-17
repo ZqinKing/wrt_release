@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 fix_cups_libcups_avahi_depends() {
+    local BUILD_DIR="${BUILD_DIR:-$(pwd)}"
     local makefile_path="$BUILD_DIR/feeds/small8/cups/Makefile"
     
     # Check if file exists
