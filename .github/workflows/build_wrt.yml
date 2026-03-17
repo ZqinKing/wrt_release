@@ -30,6 +30,11 @@ on:
 env:
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+# 必须显式声明权限，否则无法删除旧缓存
+permissions:
+  contents: read
+  actions: write
+
 jobs:
   build:
     strategy:
@@ -44,56 +49,65 @@ jobs:
       - name: Build System Setup
         run: |
           sudo bash -c 'bash <(curl -sL https://build-scripts.immortalwrt.org/init_build_environment.sh)'
-          sudo -E apt -yqq install dos2unix
-          sudo -E apt -yqq install libfuse-dev
+          sudo -E apt -yqq install dos2unix libfuse-dev
           sudo -E apt -yqq autoremove --purge
           sudo -E apt -yqq autoclean
           sudo -E apt -yqq clean
           sudo -E systemctl daemon-reload
 
       - name: Checkout
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@v4
 
       - name: Set Build Date and Timezone
         run: |
           sudo -E timedatectl set-timezone "Asia/Shanghai"
-          export BUILD_DATE=$(TZ=UTC-8 date +"%y.%m.%d_%H.%M.%S")
-          echo "BUILD_DATE=$BUILD_DATE" >> $GITHUB_ENV
+          echo "BUILD_DATE=$(date +"%y.%m.%d_%H.%M.%S")" >> $GITHUB_ENV
 
       - name: Pre Clone
-        run: ./wrt_core/pre_clone_action.sh ${{ inputs.model }}
+        run: |
+          chmod +x ./wrt_core/pre_clone_action.sh
+          ./wrt_core/pre_clone_action.sh ${{ inputs.model }}
 
       - name: Cache Dependencies
-        uses: actions/cache@v5.0.2
+        id: cache-step
+        uses: actions/cache@v4
         with:
           path: |
             ./action_build/.ccache
             ./action_build/staging_dir
-          key: ${{ matrix.os }}-${{ hashFiles('**/repo_flag') }}-${{ env.BUILD_DATE }}
+          # 关键优化：加入 inputs.model，防止不同硬件平台的缓存冲突
+          key: ${{ matrix.os }}-${{ inputs.model }}-${{ hashFiles('**/repo_flag') }}
           restore-keys: |
-            ${{ matrix.os }}-${{ hashFiles('**/repo_flag') }}-
+            ${{ matrix.os }}-${{ inputs.model }}-
 
       - name: Refresh the cache
+        if: steps.cache-step.outputs.cache-hit == 'true'
         run: |
           if [ -d "./action_build/staging_dir" ]; then
-            find "./action_build/staging_dir" -type d -name "stamp" -not -path "*target*" | while read -r dir; do
-                find "$dir" -type f -exec touch {} +
-            done
+            echo "Updating timestamps for staging_dir to avoid rebuild issues..."
+            find "./action_build/staging_dir" -type d -name "stamp" -not -path "*target*" -exec touch {} +
           fi
 
       - name: Build Firmware
-        run: ./build.sh ${{ inputs.model }}
+        run: |
+          chmod +x ./build.sh
+          ./build.sh ${{ inputs.model }}
 
       - name: Delete Old Cache
+        if: always()
         run: |
-          # 获取缓存列表并删除
-          gh cache list --key ${{ matrix.os }}-${{ hashFiles('**/repo_flag') }}- --json key --jq '.[] | .key' | while read -r key; do
-            gh cache delete "$key"
+          echo "======== Cleaning redundant caches for ${{ inputs.model }} ========"
+          # 获取当前模型的所有缓存，删除旧的，保留最新的
+          gh cache list --key ${{ matrix.os }}-${{ inputs.model }}- --json key --jq '.[] | .key' | while read -r key; do
+            if [ "$key" != "${{ steps.cache-step.outputs.cache-primary-key }}" ]; then
+              echo "Deleting old cache: $key"
+              gh cache delete "$key" || true
+            fi
           done
-          # 输出缓存状态
-          echo "========cache status========"
-          echo "ccache: $(du -sh ./action_build/.ccache | cut -f 1)"
-          echo "staging: $(du -sh ./action_build/staging_dir | cut -f 1)"
+          
+          echo "======== Cache Status ========"
+          [ -d ./action_build/.ccache ] && echo "ccache: $(du -sh ./action_build/.ccache | cut -f 1)"
+          [ -d ./action_build/staging_dir ] && echo "staging: $(du -sh ./action_build/staging_dir | cut -f 1)"
 
       - name: Machine Information
         run: |
@@ -104,7 +118,7 @@ jobs:
           echo "=============================================="
 
       - name: Upload Firmware
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ env.BUILD_DATE }}_${{ inputs.model }}
           path: ./firmware/*.*
