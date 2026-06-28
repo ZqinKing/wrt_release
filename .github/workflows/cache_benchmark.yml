@@ -1,0 +1,122 @@
+name: Cache Benchmark
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+env:
+  BENCHMARK_MODEL: jdcloud_ipq60xx_immwrt
+  BASE_REF: main
+  NO_BUILD_DIR_REF: cache-benchmark-no-build-dir
+  MAX_RUNS: 10
+
+concurrency:
+  group: cache-benchmark
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Summarize Finished Benchmark Builds
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "## Cache Benchmark Results" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Run | Variant | Branch | Status | Build Firmware | URL |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| --- | --- | --- | --- | --- | --- |" >> "$GITHUB_STEP_SUMMARY"
+
+          gh run list -R "$GITHUB_REPOSITORY" --workflow release_wrt.yml --limit 30 \
+            --json databaseId,headBranch,status,conclusion,url \
+            --jq ".[] | select(.headBranch == \"$BASE_REF\" or .headBranch == \"$NO_BUILD_DIR_REF\") | [.databaseId, .headBranch, .status, (.conclusion // \"\"), .url] | @tsv" |
+            while IFS=$'\t' read -r run_id branch status conclusion url; do
+              if [[ "$branch" == "$BASE_REF" ]]; then
+                variant="with-build-dir"
+              else
+                variant="without-build-dir"
+              fi
+
+              duration="pending"
+              if [[ "$status" == "completed" ]]; then
+                step_times=$(
+                  gh run view -R "$GITHUB_REPOSITORY" "$run_id" --json jobs \
+                    --jq '.jobs[] | select(.name | startswith("build")) | .steps[] | select(.name == "Build Firmware") | [.startedAt, .completedAt] | @tsv' 2>/dev/null || true
+                )
+                if [[ -n "$step_times" ]]; then
+                  IFS=$'\t' read -r started completed <<< "$step_times"
+                  if [[ -n "$started" && -n "$completed" ]]; then
+                    started_epoch=$(date -u -d "$started" +%s)
+                    completed_epoch=$(date -u -d "$completed" +%s)
+                    seconds=$((completed_epoch - started_epoch))
+                    duration=$(printf '%02d:%02d:%02d' $((seconds / 3600)) $(((seconds % 3600) / 60)) $((seconds % 60)))
+                  fi
+                fi
+              fi
+
+              result="$status"
+              if [[ -n "$conclusion" ]]; then
+                result="$conclusion"
+              fi
+
+              echo "| $run_id | $variant | $branch | $result | $duration | [link]($url) |" >> "$GITHUB_STEP_SUMMARY"
+            done
+
+      - name: Dispatch Next Benchmark Build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          active_runs=$(
+            {
+              gh run list -R "$GITHUB_REPOSITORY" --workflow release_wrt.yml --status queued --limit 50 --json databaseId --jq 'length'
+              gh run list -R "$GITHUB_REPOSITORY" --workflow release_wrt.yml --status in_progress --limit 50 --json databaseId --jq 'length'
+            } | awk '{sum += $1} END {print sum + 0}'
+          )
+
+          if (( active_runs > 0 )); then
+            echo "Release WRT is already queued or running. Skip this benchmark window."
+            exit 0
+          fi
+
+          current=$(
+            gh run list -R "$GITHUB_REPOSITORY" --workflow release_wrt.yml --limit 100 \
+              --json displayTitle,headBranch \
+              --jq "[.[] | select((.headBranch == \"$BASE_REF\" or .headBranch == \"$NO_BUILD_DIR_REF\") and (.displayTitle == \"Release - $BENCHMARK_MODEL\"))] | length"
+          )
+
+          if (( current >= MAX_RUNS )); then
+            echo "Benchmark finished: $current/$MAX_RUNS runs have already been dispatched."
+            exit 0
+          fi
+
+          next=$((current + 1))
+
+          if (( next == 1 )); then
+            ref="$BASE_REF"
+            variant="with-build-dir"
+          elif (( next == 2 )); then
+            ref="$NO_BUILD_DIR_REF"
+            variant="without-build-dir"
+          elif (( next % 2 == 1 )); then
+            ref="$BASE_REF"
+            variant="with-build-dir"
+          else
+            ref="$NO_BUILD_DIR_REF"
+            variant="without-build-dir"
+          fi
+
+          publish=false
+          if (( next == MAX_RUNS )); then
+            publish=true
+          fi
+
+          echo "Dispatch benchmark run $next/$MAX_RUNS: $variant on $ref publish=$publish"
+          gh workflow run -R "$GITHUB_REPOSITORY" release_wrt.yml \
+            --ref "$ref" \
+            -f model="$BENCHMARK_MODEL" \
+            -f publish="$publish" \
+            -f rebuild_env=false

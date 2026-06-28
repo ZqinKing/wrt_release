@@ -28,131 +28,263 @@ on:
           - zn_m2_immwrt
           - zn_m2_libwrt
           - x64_immwrt
+      publish:
+        required: false
+        description: 发布到 Release
+        type: boolean
+        default: false
+      rebuild_env:
+        required: false
+        description: 重新构建编译环境镜像
+        type: boolean
+        default: false
 
 env:
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  CCACHE_DIR: ${{ github.workspace }}/action_build/.ccache
+
+permissions:
+  contents: write
+  packages: write
+  actions: write
+  id-token: write
+  attestations: write
 
 jobs:
+  prepare-env-image:
+    runs-on: ubuntu-24.04
+    outputs:
+      image: ${{ steps.image-meta.outputs.image }}
+    env:
+      ENV_DOCKERFILE_B64: RlJPTSB1YnVudHU6MjQuMDQKCkVOViBERUJJQU5fRlJPTlRFTkQ9bm9uaW50ZXJhY3RpdmUKClJVTiBhcHQtZ2V0IHVwZGF0ZSAmJiBcCiAgICBhcHQtZ2V0IGluc3RhbGwgLXkgLS1uby1pbnN0YWxsLXJlY29tbWVuZHMgYmFzaCBjYS1jZXJ0aWZpY2F0ZXMgY3VybCBsb2NhbGVzIHR6ZGF0YSB1dGlsLWxpbnV4ICYmIFwKICAgIGJhc2ggLWMgJ2Jhc2ggPChjdXJsIC1zTCBodHRwczovL2J1aWxkLXNjcmlwdHMuaW1tb3J0YWx3cnQub3JnL2luaXRfYnVpbGRfZW52aXJvbm1lbnQuc2gpJyAmJiBcCiAgICBsb2NhbGUtZ2VuIGVuX1VTLlVURi04ICYmIFwKICAgIHVzZXJhZGQgLW0gLXMgL2Jpbi9iYXNoIGJ1aWxkZXIgJiYgXAogICAgYXB0LWdldCBjbGVhbiAmJiBcCiAgICBybSAtcmYgL3Zhci9saWIvYXB0L2xpc3RzLyoKCkVOViBMQU5HPWVuX1VTLlVURi04CkVOViBMQ19BTEw9ZW5fVVMuVVRGLTgKV09SS0RJUiAvd29yawo=
+      ENV_IMAGE_NAME: wrt-build-dev
+      ENV_IMAGE_MAX_AGE_DAYS: 7
+    steps:
+      - name: Set Image Name
+        id: image-meta
+        run: |
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          image="ghcr.io/${owner}/${ENV_IMAGE_NAME}:latest"
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "IMAGE=$image" >> "$GITHUB_ENV"
+
+      - name: Check Image Age
+        id: image-age
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+
+          get_latest_updated_at() {
+            local scope=$1
+            local api_path
+
+            if [[ "$scope" == "user" ]]; then
+              api_path="/users/${owner}/packages/container/${ENV_IMAGE_NAME}/versions"
+            else
+              api_path="/orgs/${owner}/packages/container/${ENV_IMAGE_NAME}/versions"
+            fi
+
+            gh api "$api_path" \
+              --jq '[.[] | select(.metadata.container.tags[]? == "latest")] | sort_by(.updated_at) | last | .updated_at // ""' \
+              2>/dev/null || true
+          }
+
+          updated_at="$(get_latest_updated_at user)"
+          if [[ ! "$updated_at" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T ]]; then
+            updated_at="$(get_latest_updated_at org)"
+          fi
+          if [[ ! "$updated_at" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T ]]; then
+            updated_at=""
+          fi
+
+          rebuild="${{ inputs.rebuild_env }}"
+          reason="manual"
+
+          if [[ "$rebuild" != "true" ]]; then
+            if [[ -z "$updated_at" || "$updated_at" == "null" ]]; then
+              rebuild="true"
+              reason="missing"
+            else
+              latest_epoch=$(date -u -d "$updated_at" +%s)
+              cutoff_epoch=$(date -u -d "${ENV_IMAGE_MAX_AGE_DAYS} days ago" +%s)
+              if (( latest_epoch < cutoff_epoch )); then
+                rebuild="true"
+                reason="expired"
+              else
+                rebuild="false"
+                reason="fresh"
+              fi
+            fi
+          fi
+
+          echo "updated_at=${updated_at:-none}"
+          echo "rebuild=$rebuild"
+          echo "reason=$reason"
+          echo "rebuild=$rebuild" >> "$GITHUB_OUTPUT"
+
+      - name: Login to GHCR
+        if: ${{ steps.image-age.outputs.rebuild == 'true' }}
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        if: ${{ steps.image-age.outputs.rebuild == 'true' }}
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Environment Image
+        if: ${{ steps.image-age.outputs.rebuild == 'true' }}
+        run: |
+          printf '%s' "$ENV_DOCKERFILE_B64" | base64 -d > Dockerfile
+          docker buildx build --pull --push --platform linux/amd64 --provenance=false --sbom=false -t "$IMAGE" -f Dockerfile .
+
   build:
+    needs: prepare-env-image
     strategy:
       matrix:
         os: [ubuntu-24.04]
     runs-on: ${{ matrix.os }}
+    container:
+      image: ${{ needs.prepare-env-image.outputs.image }}
+      options: --user root
 
     steps:
-      - name: Build System Setup
-        run: |
-          sudo bash -c 'bash <(curl -sL https://build-scripts.immortalwrt.org/init_build_environment.sh)'
-          sudo -E apt -yqq install dos2unix
-          sudo -E apt -yqq install libfuse-dev
-          sudo -E apt -yqq autoremove --purge
-          sudo -E apt -yqq autoclean
-          sudo -E apt -yqq clean
-          sudo -E systemctl daemon-reload
-
       - name: Checkout
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@v7
 
       - name: Set Build Date and Timezone
         run: |
-          sudo -E timedatectl set-timezone "Asia/Shanghai"
-          export BUILD_DATE=$(TZ=UTC-8 date +"%y.%m.%d_%H.%M.%S")
+          export TZ="Asia/Shanghai"
+          export BUILD_DATE=$(date +"%y.%m.%d_%H.%M.%S")
           echo "BUILD_DATE=$BUILD_DATE" >> $GITHUB_ENV
           export BUILD_SRC=$(awk -F"=" '/REPO_URL/ {print $NF}' "./wrt_core/compilecfg/${{ inputs.model }}.ini")
           echo "BUILD_SRC=$BUILD_SRC" >> $GITHUB_ENV
 
-      - name: Pre Clone
-        run: ./wrt_core/pre_clone_action.sh ${{ inputs.model }}
+      - name: Prepare Workspace User
+        run: chown -R builder:builder "$GITHUB_WORKSPACE"
 
-      - name: Cache Dependencies
-        uses: actions/cache@v5.0.2
+      - name: Pre Clone
+        run: runuser -u builder -- ./wrt_core/pre_clone_action.sh "${{ inputs.model }}"
+
+      - name: Cache Build Workspace
+        id: build-cache
+        uses: actions/cache@v6
         with:
           path: |
+            ./action_build/dl
             ./action_build/.ccache
+            ./action_build/build_dir
             ./action_build/staging_dir
-          key: ${{ matrix.os }}-${{ hashFiles('**/repo_flag') }}-${{ env.BUILD_DATE }}
+          key: ${{ matrix.os }}-${{ inputs.model }}-buildcache-withbuilddir-${{ github.run_id }}
           restore-keys: |
-            ${{ matrix.os }}-${{ hashFiles('**/repo_flag') }}-
+            ${{ matrix.os }}-${{ inputs.model }}-buildcache-withbuilddir-
+
+      - name: Cache Restore Summary
+        run: |
+          {
+            echo "## Build Cache"
+            echo
+            echo '```bash'
+            echo "exact-cache-hit: ${{ steps.build-cache.outputs.cache-hit }}"
+            echo "restore-prefix: ${{ matrix.os }}-${{ inputs.model }}-buildcache-withbuilddir-"
+            for path in ./action_build/dl ./action_build/.ccache ./action_build/build_dir ./action_build/staging_dir ./action_build/bin; do
+              du -sh "$path" 2>/dev/null || echo "missing $path"
+            done
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Prepare Restored Cache Permissions
+        run: chown -R builder:builder "$GITHUB_WORKSPACE"
 
       - name: Refresh the cache
         run: |
+          runuser -u builder -- bash <<'EOF'
           if [ -d "./action_build/staging_dir" ]; then
             find "./action_build/staging_dir" -type d -name "stamp" -not -path "*target*" | while read -r dir; do
-                find "$dir" -type f -exec touch {} +
+              find "$dir" -type f -exec touch {} +
             done
           fi
+          EOF
 
       - name: Machine Information (Pre-build)
         run: |
-          echo "=============== Pre-build Snapshot ==============="
-          echo "Time: $(date '+%F %T %Z')"
-          echo "Runner: ${RUNNER_NAME} (${RUNNER_OS}/${RUNNER_ARCH})"
-          echo "Kernel: $(uname -r)"
-          echo "Uptime: $(uptime -p)"
-          echo "=================================================="
-          echo "[CPU]"
-          lscpu | grep -E "Model name|Architecture|CPU\\(s\\)|Thread\\(s\\) per core|Core\\(s\\) per socket|CPU max MHz"
-          echo "=================================================="
-          echo "[Memory]"
-          free -h
-          echo "=================================================="
-          echo "[Disk]"
-          df -hT
-          echo "--------------------------------------------------"
-          df -hi
-          echo "=================================================="
-          echo "[Workspace]"
-          echo "GITHUB_WORKSPACE=${GITHUB_WORKSPACE}"
-          du -sh "${GITHUB_WORKSPACE}" 2>/dev/null || true
-          du -sh ./action_build/.ccache 2>/dev/null || true
-          du -sh ./action_build/staging_dir 2>/dev/null || true
-          du -sh ./firmware 2>/dev/null || true
-          echo "=================================================="
+          {
+            echo
+            echo "## Pre-build Snapshot"
+            echo
+            echo '```bash'
+            echo "Time: $(date '+%F %T %Z')"
+            echo "Runner: ${RUNNER_NAME} (${RUNNER_OS}/${RUNNER_ARCH})"
+            echo "Kernel: $(uname -r)"
+            echo "Uptime: $(uptime -p)"
+            echo
+            echo "[CPU]"
+            lscpu | grep -E "Model name|Architecture|CPU\\(s\\)|Thread\\(s\\) per core|Core\\(s\\) per socket|CPU max MHz"
+            echo
+            echo "[Memory]"
+            free -h
+            echo
+            echo "[Disk]"
+            df -hT
+            echo
+            df -hi
+            echo
+            echo "[Workspace]"
+            echo "GITHUB_WORKSPACE=${GITHUB_WORKSPACE}"
+            du -sh "${GITHUB_WORKSPACE}" 2>/dev/null || true
+            du -sh ./action_build/dl 2>/dev/null || true
+            du -sh ./action_build/.ccache 2>/dev/null || true
+            du -sh ./action_build/build_dir 2>/dev/null || true
+            du -sh ./action_build/staging_dir 2>/dev/null || true
+            du -sh ./action_build/bin 2>/dev/null || true
+            du -sh ./firmware 2>/dev/null || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Build Firmware
-        run: ./build.sh ${{ inputs.model }}
+        run: runuser -u builder -- ./build.sh "${{ inputs.model }}"
 
       - name: Get Kernel Verion
         run: |
           # 获取内核版本
           echo "KVER=$(grep -oP "^kernel.*" ./firmware/*.manifest | grep -oP "[4-6]\.[0-9]{1,3}\.[0-9]{1,3}")" >> $GITHUB_ENV
 
-      - name: Delete Old Cache
-        run: |
-          # 获取缓存列表并删除
-          gh cache list --key ${{ matrix.os }}-${{ hashFiles('**/repo_flag') }}- --json key --jq '.[] | .key' | while read -r key; do
-            gh cache delete "$key"
-          done
-          # 输出缓存状态
-          echo "========cache status========"
-          echo "ccache: $(du -sh ./action_build/.ccache | cut -f 1)"
-          echo "staging: $(du -sh ./action_build/staging_dir | cut -f 1)"
-
       - name: Machine Information (Post-build)
         run: |
-          echo "=============== Post-build Snapshot ==============="
-          echo "Time: $(date '+%F %T %Z')"
-          echo "Runner: ${RUNNER_NAME} (${RUNNER_OS}/${RUNNER_ARCH})"
-          echo "Kernel: $(uname -r)"
-          echo "Uptime: $(uptime -p)"
-          echo "===================================================="
-          echo "[CPU]"
-          lscpu | grep -E "Model name|Architecture|CPU\\(s\\)|Thread\\(s\\) per core|Core\\(s\\) per socket|CPU max MHz"
-          echo "===================================================="
-          echo "[Memory]"
-          free -h
-          echo "===================================================="
-          echo "[Disk]"
-          df -hT
-          echo "----------------------------------------------------"
-          df -hi
-          echo "===================================================="
-          echo "[Build Outputs]"
-          du -sh ./action_build/.ccache 2>/dev/null || true
-          du -sh ./action_build/staging_dir 2>/dev/null || true
-          du -sh ./firmware 2>/dev/null || true
-          echo "Firmware file count: $(ls -1 ./firmware 2>/dev/null | wc -l)"
-          echo "===================================================="
+          {
+            echo
+            echo "## Post-build Snapshot"
+            echo
+            echo '```bash'
+            echo "Time: $(date '+%F %T %Z')"
+            echo "Runner: ${RUNNER_NAME} (${RUNNER_OS}/${RUNNER_ARCH})"
+            echo "Kernel: $(uname -r)"
+            echo "Uptime: $(uptime -p)"
+            echo
+            echo "[CPU]"
+            lscpu | grep -E "Model name|Architecture|CPU\\(s\\)|Thread\\(s\\) per core|Core\\(s\\) per socket|CPU max MHz"
+            echo
+            echo "[Memory]"
+            free -h
+            echo
+            echo "[Disk]"
+            df -hT
+            echo
+            df -hi
+            echo
+            echo "[Build Outputs]"
+            du -sh ./action_build/dl 2>/dev/null || true
+            du -sh ./action_build/.ccache 2>/dev/null || true
+            du -sh ./action_build/build_dir 2>/dev/null || true
+            du -sh ./action_build/staging_dir 2>/dev/null || true
+            du -sh ./action_build/bin 2>/dev/null || true
+            du -sh ./firmware 2>/dev/null || true
+            echo "Firmware file count: $(ls -1 ./firmware 2>/dev/null | wc -l)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Package OpenWrt Firmware
         if: ${{ inputs.model == 'n1_immwrt' }}
@@ -162,6 +294,18 @@ jobs:
           PACKAGE_SOC: s905d
           KERNEL_VERSION_NAME: 6.6.y
           WHOAMI: ZqinKing
+
+      - name: Attest Firmware
+        if: ${{ inputs.model != 'n1_immwrt' }}
+        uses: actions/attest@v4
+        with:
+          subject-path: ./firmware/*.*
+
+      - name: Attest Packaged Firmware
+        if: ${{ inputs.model == 'n1_immwrt' }}
+        uses: actions/attest@v4
+        with:
+          subject-path: ${{ env.PACKAGED_OUTPUTPATH }}/*.*
 
       - name: Prepare Release Body
         run: |
@@ -173,9 +317,41 @@ jobs:
           echo "插件：" >> release_body.txt
           echo "$(grep -oP "luci-app(-[a-zA-Z0-9]{1,}){1,}" ./firmware/*.manifest | awk -F":" '{print $NF}')"  >> release_body.txt
 
+      - name: Upload Firmware
+        if: ${{ !inputs.publish }}
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: ${{ env.BUILD_DATE }}_${{ inputs.model }}
+          path: ${{ inputs.model == 'n1_immwrt' && env.PACKAGED_OUTPUTPATH || './firmware' }}/*.*
+          retention-days: 3
+
       - name: Release Firmware
+        if: ${{ inputs.publish }}
         uses: softprops/action-gh-release@v2.5.0
         with:
           tag_name: ${{ env.BUILD_DATE }}_${{ inputs.model }}
           files: ${{ inputs.model == 'n1_immwrt' && env.PACKAGED_OUTPUTPATH || './firmware' }}/*.*
           body_path: ./release_body.txt
+
+  cleanup-cache:
+    needs: build
+    if: ${{ needs.build.result == 'success' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Delete Old Cache
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          prefix="ubuntu-24.04-${{ inputs.model }}-buildcache-withbuilddir-"
+          echo "## cache list before cleanup" >> $GITHUB_STEP_SUMMARY
+          gh cache list -R "$GITHUB_REPOSITORY" --key "$prefix" --sort created_at --order desc --limit 20 \
+            --json id,key,createdAt,sizeInBytes \
+            --jq '.[] | "\(.createdAt) \(.sizeInBytes) \(.id) \(.key)"' || true
+
+          # 保留最近 1 个缓存，删除更旧的同型号缓存。
+          gh cache list -R "$GITHUB_REPOSITORY" --key "$prefix" --sort created_at --order desc --limit 100 \
+            --json id,key \
+            --jq '.[1:][] | "\(.id) \(.key)"' | while read -r id key; do
+              echo "delete old cache: $key" >> $GITHUB_STEP_SUMMARY
+              gh cache delete -R "$GITHUB_REPOSITORY" "$id" || true
+          done

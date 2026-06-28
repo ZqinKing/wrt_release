@@ -1,4 +1,5 @@
 firmware/
+imagebuilder_work/
 .pc/
 libwrt/
 test/

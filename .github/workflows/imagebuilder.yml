@@ -1,0 +1,91 @@
+name: ImageBuilder Quick Build
+run-name: ImageBuilder - ${{ inputs.model }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        required: true
+        description: Device Model
+        type: choice
+        default: jdcloud_ipq60xx_immwrt
+        options:
+          - aliyun_ap8220_immwrt
+          - aliyun_ap8220_libwrt
+          - cmcc_rax3000m_immwrt
+          - gemtek_w1701k_immwrt
+          - jdcloud_ax6000_immwrt
+          - jdcloud_ipq60xx_immwrt
+          - jdcloud_ipq60xx_libwrt
+          - link_nn6000v2_immwrt
+          - linksys_mx4x00_immwrt
+          - qihoo_360v6_immwrt
+          - redmi_ax5_immwrt
+          - redmi_ax6_immwrt
+          - redmi_ax6_libwrt
+          - redmi_ax6000_immwrt21
+          - zn_m2_immwrt
+          - zn_m2_libwrt
+          - x64_immwrt
+      imagebuilder_url:
+        required: true
+        description: ImageBuilder URL
+        type: string
+      extra_packages:
+        required: false
+        description: Extra packages to install (space-separated)
+        type: string
+        default: ""
+      remove_packages:
+        required: false
+        description: Packages to remove (space-separated, no need for - prefix)
+        type: string
+        default: ""
+
+env:
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      #- name: Free disk space
+      #  uses: sbwml/actions@free-disk
+
+      - name: Build System Setup
+        run: |
+          sudo bash -c 'bash <(curl -sL https://build-scripts.immortalwrt.org/init_build_environment.sh)'
+          sudo -E apt -yqq install dos2unix
+          sudo -E apt -yqq install libfuse-dev
+          sudo -E apt -yqq autoremove --purge
+          sudo -E apt -yqq autoclean
+          sudo -E apt -yqq clean
+          sudo -E systemctl daemon-reload
+
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set Build Date and Timezone
+        run: |
+          sudo -E timedatectl set-timezone "Asia/Shanghai"
+          export BUILD_DATE=$(TZ=UTC-8 date +"%y.%m.%d_%H.%M.%S")
+          echo "BUILD_DATE=$BUILD_DATE" >> $GITHUB_ENV
+
+      - name: Build with ImageBuilder
+        env:
+          EXTRA_PACKAGES: ${{ inputs.extra_packages }}
+          REMOVE_PACKAGES: ${{ inputs.remove_packages }}
+        run: |
+          chmod +x ./imagebuilder.sh
+          ./imagebuilder.sh "${{ inputs.model }}" "${{ inputs.imagebuilder_url }}"
+
+      - name: Upload Firmware to Artifacts
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: ${{ env.BUILD_DATE }}_${{ inputs.model }}
+          path: ./firmware/*
+          retention-days: 7
