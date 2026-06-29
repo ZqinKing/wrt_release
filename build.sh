@@ -14,6 +14,8 @@ fi
 
 BASE_PATH=$(cd "$WRT_CORE_PATH" && pwd)
 
+REPO_ROOT=$(cd "$BASE_PATH/.." && pwd)
+
 Dev=$1
 Build_Mod=$2
 
@@ -43,7 +45,8 @@ collect_supported_devs() {
 }
 
 print_usage() {
-    echo "Usage: $0 <device> [debug]"
+    echo "Usage: $0 <device> [debug|container|container_debug]"
+    echo "       ./start.sh"
 }
 
 print_supported_devs() {
@@ -93,7 +96,9 @@ prompt_select_build_mode() {
         echo "Build mode:"
         echo "  1) normal"
         echo "  2) debug"
-        printf "Select build mode (1-2, q to quit): "
+        echo "  3) container"
+        echo "  4) container_debug"
+        printf "Select build mode (1-4, q to quit): "
 
         if ! read -r input; then
             echo
@@ -116,7 +121,17 @@ prompt_select_build_mode() {
             return
         fi
 
-        echo "Invalid selection. Please enter 1 or 2."
+        if [[ "$input" =~ ^[[:space:]]*3[[:space:]]*$ ]]; then
+            Build_Mod="container"
+            return
+        fi
+
+        if [[ "$input" =~ ^[[:space:]]*4[[:space:]]*$ ]]; then
+            Build_Mod="container_debug"
+            return
+        fi
+
+        echo "Invalid selection. Please enter 1, 2, 3, or 4."
     done
 }
 
@@ -162,6 +177,58 @@ read_ini_by_key() {
     local key=$1
     awk -F"=" -v key="$key" '$1 == key {print $2}' "$INI_FILE"
 }
+prepare_container_image() {
+    local base_image=$1
+    local image_name=$2
+    local container_tmp_Dockerfile
+    local container_default_user
+
+    container_tmp_Dockerfile=$(mktemp Dockerfile.XXXXXX)
+
+    cleanup_container_dockerfile() {
+        rm -f "$container_tmp_Dockerfile"
+    }
+
+    trap cleanup_container_dockerfile RETURN
+
+    docker pull "$base_image"
+    container_default_user=$(docker run --rm "$base_image" whoami)
+    cat > "$container_tmp_Dockerfile" <<EOF
+FROM $base_image
+USER root
+RUN apt-get update && apt-get install -y sudo git jq build-essential cmake g++ clang bison flex libelf-dev libncurses5-dev python3-distutils zlib1g-dev python3 pkg-config libssl-dev
+USER $container_default_user
+RUN git config --global pull.rebase false
+RUN git config --global advice.detachedHead false
+CMD ["bash", "wrt_core/build_container.sh", "$image_name"]
+EOF
+    docker build -t "$image_name" -f "$container_tmp_Dockerfile" .
+}
+
+run_container_build() {
+    local container_build_mod=$1
+    local build_target_sdk
+    local container_name
+
+    build_target_sdk=$(read_ini_by_key "BUILD_TARGET_SDK")
+
+    if [[ -z "$build_target_sdk" ]]; then
+        echo "BUILD_TARGET_SDK not specified in $INI_FILE. Using default: openwrt-25.12"
+        build_target_sdk="immortalwrt/sdk:openwrt-25.12"
+    fi
+
+    container_name="$(echo "$Dev" | tr '[:upper:]' '[:lower:]' | tr '/:' '-_')-build-container"
+
+    prepare_container_image "$build_target_sdk" "$container_name"
+    docker run --rm -it \
+        -v "$REPO_ROOT":/build \
+        -w /build \
+        --shm-size=8g \
+        --ipc=shareable \
+        --ulimit nofile=65535:65535 \
+        "$container_name" \
+        bash wrt_core/build_container.sh "$Dev" "$container_build_mod"
+}
 
 remove_uhttpd_dependency() {
     local config_path="$BASE_PATH/../$BUILD_DIR/.config"
@@ -174,6 +241,16 @@ remove_uhttpd_dependency() {
         fi
     fi
 }
+
+if [[ $Build_Mod == "container" ]]; then
+    run_container_build ""
+    exit 0
+fi
+
+if [[ $Build_Mod == "container_debug" ]]; then
+    run_container_build "debug"
+    exit 0
+fi
 
 apply_config() {
     \cp -f "$CONFIG_FILE" "$BASE_PATH/../$BUILD_DIR/.config"
