@@ -1,0 +1,45 @@
+{
+  "$schema": "../recipe.schema.json",
+  "name": "awg",
+  "description": "导入 AmneziaWG OpenWrt 包并启用基础构建配置",
+  "enabled": false,
+  "phase": "pre_defconfig",
+  "depends": [],
+  "conflicts": [],
+  "tags": [
+    "vpn",
+    "network",
+    "awg"
+  ],
+  "when": {
+    "targets": [],
+    "repo": [],
+    "branch": [],
+    "tags": []
+  },
+  "actions": {
+    "addFeeds": [],
+    "removeFeeds": [],
+    "importPackages": [
+      {
+        "source": "awg-openwrt",
+        "name": "kmod-amneziawg"
+      },
+      {
+        "source": "awg-openwrt",
+        "name": "amneziawg-tools"
+      },
+      {
+        "source": "awg-openwrt",
+        "name": "luci-proto-amneziawg"
+      }
+    ],
+    "removePackageDirs": [],
+    "patches": [],
+    "files": [],
+    "configs": [
+      "configs/awg.config"
+    ],
+    "script": null
+  }
+}

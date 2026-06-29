@@ -1,0 +1,32 @@
+{
+  "$schema": "../recipe.schema.json",
+  "name": "tailscale_use_awg",
+  "description": "将 tailscale 源切换到 AWG 兼容实现并固定目标版本",
+  "enabled": false,
+  "phase": "post_feeds_update",
+  "depends": [
+    "awg"
+  ],
+  "conflicts": [],
+  "tags": [
+    "vpn",
+    "tailscale",
+    "awg"
+  ],
+  "when": {
+    "targets": [],
+    "repo": [],
+    "branch": [],
+    "tags": []
+  },
+  "actions": {
+    "addFeeds": [],
+    "removeFeeds": [],
+    "importPackages": [],
+    "removePackageDirs": [],
+    "patches": [],
+    "files": [],
+    "configs": [],
+    "script": "apply.sh"
+  }
+}
