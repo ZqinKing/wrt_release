@@ -14,6 +14,8 @@ REPO_URL=$1
 REPO_BRANCH=$2
 BUILD_DIR=$3
 COMMIT_HASH=$4
+TARGET_NAME=$5
+TARGET_INI=$6
 
 # Convert BUILD_DIR to absolute path
 if [[ "$BUILD_DIR" != /* ]]; then
@@ -36,13 +38,33 @@ source "$SCRIPT_DIR/modules/packages.sh"
 source "$SCRIPT_DIR/modules/system.sh"
 source "$SCRIPT_DIR/modules/cups.sh"
 source "$SCRIPT_DIR/modules/docker.sh"
+source "$SCRIPT_DIR/recipe.sh"
 
+
+init_recipes() {
+    if [[ -n "$TARGET_NAME" && -n "$TARGET_INI" ]]; then
+        recipe_init "$TARGET_NAME" "$TARGET_INI" "$BUILD_DIR" "$REPO_URL" "$REPO_BRANCH" "$BASE_PATH"
+        recipe_print_plan
+    fi
+}
+
+run_recipe_phase_if_enabled() {
+    local phase="$1"
+    if [[ -n "$TARGET_NAME" && -n "$TARGET_INI" ]]; then
+        recipe_run_phase "$phase"
+    fi
+}
 
 main() {
+    init_recipes
+    run_recipe_phase_if_enabled pre_clone
     clone_repo
     clean_up
     reset_feeds_conf
+    run_recipe_phase_if_enabled post_clone
+    run_recipe_phase_if_enabled pre_feeds
     update_feeds
+    run_recipe_phase_if_enabled post_feeds_update
     remove_unwanted_packages
     remove_tweaked_packages
     install_custom_feed
@@ -90,6 +112,7 @@ main() {
     remove_attendedsysupgrade
     fix_kconfig_recursive_dependency
     install_feeds
+    run_recipe_phase_if_enabled post_feeds_install
     verify_custom_feed_installed_paths
     docker_stack_sync_nftables_compat "$BUILD_DIR" "0"
     fix_cups_libcups_avahi_depends

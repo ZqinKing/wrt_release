@@ -45,7 +45,7 @@ collect_supported_devs() {
 }
 
 print_usage() {
-    echo "Usage: $0 <device> [debug|container|container_debug]"
+    echo "Usage: $0 <device> [debug|container|container_debug|plan]"
     echo "       ./start.sh"
 }
 
@@ -98,7 +98,8 @@ prompt_select_build_mode() {
         echo "  2) debug"
         echo "  3) container"
         echo "  4) container_debug"
-        printf "Select build mode (1-4, q to quit): "
+        echo "  5) plan"
+        printf "Select build mode (1-5, q to quit): "
 
         if ! read -r input; then
             echo
@@ -131,7 +132,12 @@ prompt_select_build_mode() {
             return
         fi
 
-        echo "Invalid selection. Please enter 1, 2, 3, or 4."
+        if [[ "$input" =~ ^[[:space:]]*5[[:space:]]*$ ]]; then
+            Build_Mod="plan"
+            return
+        fi
+
+        echo "Invalid selection. Please enter 1, 2, 3, 4, or 5."
     done
 }
 
@@ -163,10 +169,6 @@ fi
 CONFIG_FILE="$BASE_PATH/deconfig/$Dev.config"
 INI_FILE="$BASE_PATH/compilecfg/$Dev.ini"
 
-if [[ ! -f $CONFIG_FILE ]]; then
-    echo "Config not found: $CONFIG_FILE"
-    exit 1
-fi
 
 if [[ ! -f $INI_FILE ]]; then
     echo "INI file not found: $INI_FILE"
@@ -176,6 +178,76 @@ fi
 read_ini_by_key() {
     local key=$1
     awk -F"=" -v key="$key" '$1 == key {print $2}' "$INI_FILE"
+}
+
+read_ini_by_key_from_file() {
+    local file=$1
+    local key=$2
+    awk -F"=" -v key="$key" '$1 == key {print $2}' "$file"
+}
+
+
+resolve_config_file() {
+    local base_config
+    base_config=$(read_ini_by_key "BASE_CONFIG")
+
+    if [[ -n "$base_config" ]]; then
+        if [[ "$base_config" = /* ]]; then
+            CONFIG_FILE="$base_config"
+        else
+            CONFIG_FILE="$BASE_PATH/$base_config"
+        fi
+    fi
+}
+
+resolve_config_file
+if [[ ! -f $CONFIG_FILE ]]; then
+    echo "Config not found: $CONFIG_FILE"
+    exit 1
+fi
+
+append_config_fragment() {
+    local fragment=$1
+    local fragment_path
+
+    if [[ "$fragment" = /* ]]; then
+        fragment_path="$fragment"
+    else
+        fragment_path="$BASE_PATH/$fragment"
+    fi
+
+    if [[ ! -f "$fragment_path" ]]; then
+        echo "Config fragment not found: $fragment_path" >&2
+        exit 1
+    fi
+
+    cat "$fragment_path" >> "$BASE_PATH/../$BUILD_DIR/.config"
+}
+
+apply_target_config_fragments() {
+    local fragments
+    local old_ifs
+    local fragment
+
+    fragments=$(read_ini_by_key "CONFIG_FRAGMENTS")
+    [[ -n "$fragments" ]] || return 0
+
+    old_ifs="$IFS"
+    IFS=','
+    for fragment in $fragments; do
+        fragment="${fragment#${fragment%%[![:space:]]*}}"
+        fragment="${fragment%${fragment##*[![:space:]]}}"
+        [[ -n "$fragment" ]] || continue
+        append_config_fragment "$fragment"
+    done
+    IFS="$old_ifs"
+}
+
+run_build_recipe_phase() {
+    local phase=$1
+    BASE_PATH="$BASE_PATH" source "$BASE_PATH/recipe.sh"
+    recipe_init "$Dev" "$INI_FILE" "$BASE_PATH/../$BUILD_DIR" "$REPO_URL" "$REPO_BRANCH" "$BASE_PATH"
+    recipe_run_phase "$phase"
 }
 prepare_container_image() {
     local base_image=$1
@@ -253,8 +325,9 @@ if [[ $Build_Mod == "container_debug" ]]; then
 fi
 
 apply_config() {
+    resolve_config_file
     \cp -f "$CONFIG_FILE" "$BASE_PATH/../$BUILD_DIR/.config"
-    
+
     if grep -qE "(ipq60xx|ipq807x)" "$BASE_PATH/../$BUILD_DIR/.config" &&
         ! grep -q "CONFIG_GIT_MIRROR" "$BASE_PATH/../$BUILD_DIR/.config"; then
         cat "$BASE_PATH/deconfig/nss.config" >> "$BASE_PATH/../$BUILD_DIR/.config"
@@ -265,6 +338,8 @@ apply_config() {
     cat "$BASE_PATH/deconfig/docker_deps.config" >> "$BASE_PATH/../$BUILD_DIR/.config"
 
     cat "$BASE_PATH/deconfig/proxy.config" >> "$BASE_PATH/../$BUILD_DIR/.config"
+
+    apply_target_config_fragments
 }
 
 REPO_URL=$(read_ini_by_key "REPO_URL")
@@ -277,14 +352,23 @@ COMMIT_HASH=${COMMIT_HASH:-none}
 if [[ -d action_build ]]; then
     BUILD_DIR="action_build"
 fi
+if [[ $Build_Mod == "plan" ]]; then
+    BASE_PATH="$BASE_PATH" source "$BASE_PATH/recipe.sh"
+    recipe_init "$Dev" "$INI_FILE" "$BASE_PATH/../$BUILD_DIR" "$REPO_URL" "$REPO_BRANCH" "$BASE_PATH"
+    recipe_print_plan
+    exit 0
+fi
 
-"$BASE_PATH/update.sh" "$REPO_URL" "$REPO_BRANCH" "$BUILD_DIR" "$COMMIT_HASH"
+
+"$BASE_PATH/update.sh" "$REPO_URL" "$REPO_BRANCH" "$BUILD_DIR" "$COMMIT_HASH" "$Dev" "$INI_FILE"
 
 apply_config
+run_build_recipe_phase pre_defconfig
 remove_uhttpd_dependency
 
 cd "$BASE_PATH/../$BUILD_DIR"
 make defconfig
+run_build_recipe_phase post_defconfig
 
 if grep -qE "^CONFIG_TARGET_x86_64=y" "$CONFIG_FILE"; then
     DISTFEEDS_PATH="$BASE_PATH/../$BUILD_DIR/package/emortal/default-settings/files/99-distfeeds.conf"
@@ -292,6 +376,7 @@ if grep -qE "^CONFIG_TARGET_x86_64=y" "$CONFIG_FILE"; then
         sed -i 's/aarch64_cortex-a53/x86_64/g' "$DISTFEEDS_PATH"
     fi
 fi
+run_build_recipe_phase finalize
 
 if [[ $Build_Mod == "debug" ]]; then
     exit 0
