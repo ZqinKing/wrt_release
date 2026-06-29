@@ -114,11 +114,18 @@ sudo bash -c 'bash <(curl -sL https://build-scripts.immortalwrt.org/init_build_e
 
 ---
 
-## 5. 三方插件
+## 5. 使用 Docker 容器构建
+- 使用容器构建可以避免因为环境不一致导致的编译失败
+
+``` bash
+./build.sh x64_immwrt container
+```
+
+## 6. 三方插件
 
 三方插件源自：[https://github.com/kenzok8/small-package.git](https://github.com/kenzok8/small-package.git)
 
-## 6. 项目结构说明
+## 7. 项目结构说明
 
 - **wrt_core/**: 核心模块目录，包含所有配置、补丁和脚本。
   - **compilecfg/**: 编译配置文件 (.ini)。
