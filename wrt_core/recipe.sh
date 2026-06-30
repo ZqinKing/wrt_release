@@ -28,6 +28,14 @@ recipe_die() {
     return 1
 }
 
+recipe_log_boundary() {
+    local position="$1"
+    local phase="$2"
+    local name="$3"
+
+    printf 'recipe: ===== %s recipe=%s phase=%s =====\n' "$position" "$name" "$phase"
+}
+
 recipe_trim() {
     local value="$*"
     value="${value#${value%%[![:space:]]*}}"
@@ -518,19 +526,19 @@ recipe_apply_remove_feed() {
 }
 
 recipe_registry_get() {
-    local label="$1"
+    local source_key="$1"
     local expr="$2"
     local registry="$RECIPE_BASE_PATH/recipes/import_registry.json"
 
-    jq -er --arg label "$label" ".sources[\$label] | $expr" "$registry"
+    jq -er --arg source_key "$source_key" ".sources[\$source_key] | $expr" "$registry"
 }
 
 recipe_registry_get_optional() {
-    local label="$1"
+    local source_key="$1"
     local expr="$2"
     local registry="$RECIPE_BASE_PATH/recipes/import_registry.json"
 
-    jq -er --arg label "$label" ".sources[\$label] | $expr" "$registry" 2>/dev/null || true
+    jq -er --arg source_key "$source_key" ".sources[\$source_key] | $expr" "$registry" 2>/dev/null || true
 }
 
 recipe_apply_import_package() {
@@ -673,8 +681,9 @@ recipe_run_phase() {
     for name in "${RECIPE_PLAN[@]}"; do
         file=$(recipe_json_path "$name")
         if [ "$(recipe_json_get "$file" '.phase')" = "$phase" ]; then
-            echo "recipe: running [$phase] $name"
+            recipe_log_boundary BEGIN "$phase" "$name"
             recipe_apply_one "$name"
+            recipe_log_boundary END "$phase" "$name"
         fi
     done
 }

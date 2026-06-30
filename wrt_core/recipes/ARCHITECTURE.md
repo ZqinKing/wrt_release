@@ -68,8 +68,8 @@ KERNEL_MODULES=
 
 - `BASE_CONFIG`：主 `.config` 文件路径，默认仍回退到 `deconfig/<target>.config`
 - `CONFIG_FRAGMENTS`：目标级通用 config 片段，逗号分隔
-- `RECIPES`：启用的 recipe 名列表，逗号分隔
-- `DISABLE_RECIPES`：从默认集或外部注入集中显式禁用的 recipe
+- `RECIPES`：追加启用的 recipe 名列表，逗号分隔；即使某 recipe 的 `enabled` 为 `false`，只要出现在这里也会进入候选集
+- `DISABLE_RECIPES`：从默认集或 `RECIPES` 注入集中显式移除的 recipe
 - `TARGET_TAGS`：当前目标标签，供 recipe 条件过滤使用，例如 `x86_64,immortalwrt,master`
 - `KERNEL_VERMAGIC` / `KERNEL_MODULES`：target 参数；供 `fix_kernel_magic` 等 recipe 使用
 - 默认启用集来自各 recipe 的 `enabled: true`，然后由目标 ini 的 `RECIPES` / `DISABLE_RECIPES` 做增量调整
@@ -89,6 +89,22 @@ TARGET_TAGS=x86_64,immortalwrt,master
 KERNEL_VERMAGIC=
 KERNEL_MODULES=
 ```
+
+启用判定顺序：
+
+1. 扫描所有 `recipe.json`，把 `enabled: true` 的 recipe 放入默认候选集
+2. 读取目标 ini 的 `RECIPES`，把其中列出的 recipe 追加到候选集
+3. 读取目标 ini 的 `DISABLE_RECIPES`，把命中的 recipe 从候选集移除
+4. 对候选集补齐 `depends`
+5. 对候选集执行 `when.targets` / `when.repo` / `when.branch` / `when.tags` 条件过滤；不匹配时跳过而不是报错
+6. 过滤后的最终集合再进入冲突检查与 phase 排序
+
+因此：
+
+- `enabled: true` 只表示“默认加入候选集”，不表示一定会执行
+- `RECIPES=` 可以显式启用一个默认关闭的 recipe
+- `DISABLE_RECIPES=` 可以显式关闭一个默认开启或被显式追加的 recipe
+- 即使 recipe 已进入候选集，只要 `when.*` 不匹配，最终仍不会执行
 
 ---
 
@@ -203,11 +219,12 @@ KERNEL_MODULES=
 5. 用 `jq` 校验候选 recipe 的必需字段与类型
 6. 检查 `name == 目录名`
 7. 检查 `phase` 是否属于固定枚举
-8. 过滤 `when.*` 不匹配项，包括 `when.tags`
-9. 解析并补齐 `depends`
-10. 检查 `conflicts`（允许通过 `DISABLE_RECIPES` 在最终集消解）
-11. 检查 `files` / `patches` 目标路径冲突与 `configs` 重复项
-12. 按 `phase` 排序并生成执行计划
+8. 解析并补齐 `depends`
+9. 过滤 `when.targets` / `when.repo` / `when.branch` / `when.tags` 不匹配项；当前实现是不匹配即跳过，并打印 `recipe: skipping <name> because when conditions do not match target`
+10. 为了保证依赖补齐后的 recipe 也经过同样过滤，当前实现会再次执行一轮 `depends` 解析 + 条件过滤
+11. 检查 `conflicts`（允许通过 `DISABLE_RECIPES` 在最终集消解）
+12. 检查 `files` / `patches` 目标路径冲突与 `configs` 重复项
+13. 按 `phase` 排序并生成执行计划
 
 执行规则：
 
