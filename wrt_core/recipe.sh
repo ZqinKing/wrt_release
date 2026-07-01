@@ -585,9 +585,20 @@ recipe_apply_add_feed() {
     [ -f "$feeds_path" ] || recipe_die "feeds file not found: $feeds_path"
     feed_name=$(printf '%s\n' "$entry" | awk '{print $2}')
     [ -n "$feed_name" ] || recipe_die "malformed addFeeds entry '$entry'"
-    if declare -F append_feed_if_missing >/dev/null 2>&1; then
-        append_feed_if_missing "$feeds_path" "[[:space:]]${feed_name}[[:space:]]" "$entry"
-    elif ! grep -Eq "[[:space:]]${feed_name}[[:space:]]" "$feeds_path"; then
+
+    local found=0
+    while read -r line || [ -n "$line" ]; do
+        [[ "$line" =~ ^[[:space:]]*# ]] && continue
+        [[ -z "$(echo "$line" | xargs)" ]] && continue
+        local name
+        name=$(echo "$line" | awk '{print $2}')
+        if [ "$name" = "$feed_name" ]; then
+            found=1
+            break
+        fi
+    done < "$feeds_path"
+
+    if [ "$found" -eq 0 ]; then
         [ -z "$(tail -c 1 "$feeds_path")" ] || echo "" >> "$feeds_path"
         echo "$entry" >> "$feeds_path"
     fi
@@ -599,7 +610,14 @@ recipe_apply_remove_feed() {
 
     feeds_path=$(recipe_get_feeds_path)
     [ -f "$feeds_path" ] || recipe_die "feeds file not found: $feeds_path"
-    sed -i "/[[:space:]]${feed_name}[[:space:]]/d" "$feeds_path"
+    awk -v target="$feed_name" '
+        {
+            if ($0 !~ /^[[:space:]]*#/ && $2 == target) {
+                next
+            }
+            print
+        }
+    ' "$feeds_path" > "${feeds_path}.tmp" && mv "${feeds_path}.tmp" "$feeds_path"
 }
 
 recipe_registry_get() {

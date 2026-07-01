@@ -109,11 +109,11 @@ KERNEL_MODULES=
 
 ## recipe.json 规范
 
-每个 recipe 用一个 `recipe.json` 描述。格式由 `wrt_core/recipes/schemas/recipe.schema.json` 约束；runner 同时用 `jq` 校验自身消费字段。
+每个 recipe 用一个 `recipe.json` 描述。格式由 `wrt_core/recipes/recipe.schema.json` 约束；runner 同时用 `jq` 校验自身消费字段。
 
 ```json
 {
-  "$schema": "../schemas/recipe.schema.json",
+  "$schema": "../recipe.schema.json",
   "name": "example_argon_base",
   "description": "示例配方：演示 feed、文件覆盖、补丁、配置片段、脚本钩子的统一声明",
   "enabled": false,

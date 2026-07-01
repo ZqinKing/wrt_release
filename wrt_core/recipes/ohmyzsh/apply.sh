@@ -8,8 +8,26 @@ plugins_dir="$ohmyzsh_dir/custom/plugins"
 git_clone_clean() {
     local url="$1"
     local target="$2"
-    rm -rf "$target"
-    git clone --depth 1 "$url" "$target"
+    local max_retries=3
+    local retry_count=0
+    local success=0
+
+    while [ "$retry_count" -lt "$max_retries" ]; do
+        rm -rf "$target"
+        echo "ohmyzsh: Cloning $url to $target (Attempt $((retry_count + 1))/$max_retries)..."
+        if git clone --depth 1 "$url" "$target"; then
+            success=1
+            break
+        fi
+        retry_count=$((retry_count + 1))
+        echo "ohmyzsh: Clone failed. Waiting 5 seconds before retrying..."
+        sleep 5
+    done
+
+    if [ "$success" -ne 1 ]; then
+        echo "ohmyzsh: Error: Failed to clone $url after $max_retries attempts." >&2
+        return 1
+    fi
 }
 
 mkdir -p "$base_files_path/root"
