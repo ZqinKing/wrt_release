@@ -402,6 +402,83 @@ recipe_sort_plan() {
     done < <(printf '%b' "$sortable" | LC_ALL=C sort -n -k1,1 -k2,2 | cut -d' ' -f2-)
 }
 
+recipe_list_all_names() {
+    local recipe_json
+    local name
+    local declared
+    local names=""
+
+    for recipe_json in "$RECIPE_BASE_PATH"/recipes/*/recipe.json; do
+        [ -f "$recipe_json" ] || continue
+        recipe_validate_structure "$recipe_json"
+        name=$(basename "$(dirname "$recipe_json")")
+        declared=$(recipe_json_get "$recipe_json" '.name')
+        [ "$declared" = "$name" ] || recipe_die "$name: name must equal directory name"
+        names="${names}${name}\n"
+    done
+
+    printf '%b' "$names" | LC_ALL=C sort
+}
+
+recipe_collect_csv_set() {
+    local ini_path="$1"
+    local key="$2"
+    local raw
+
+    raw=$(recipe_target_ini_get "$ini_path" "$key")
+    recipe_split_csv "$raw"
+}
+
+recipe_is_default_enabled() {
+    local name="$1"
+    local file
+
+    file=$(recipe_json_path "$name")
+    [ "$(recipe_json_get "$file" '.enabled')" = "true" ]
+}
+
+recipe_compute_target_enabled() {
+    local name="$1"
+    local current
+
+    while IFS= read -r current; do
+        [ -n "$current" ] || continue
+        if [ "$current" = "$name" ]; then
+            return 1
+        fi
+    done < <(recipe_collect_csv_set "$RECIPE_TARGET_INI" DISABLE_RECIPES)
+
+    while IFS= read -r current; do
+        [ -n "$current" ] || continue
+        if [ "$current" = "$name" ]; then
+            return 0
+        fi
+    done < <(recipe_collect_csv_set "$RECIPE_TARGET_INI" RECIPES)
+
+    recipe_is_default_enabled "$name"
+}
+
+recipe_required_by_enabled() {
+    local wanted="$1"
+    local name
+    local file
+    local dep
+
+    for name in "${RECIPE_PLAN[@]}"; do
+        file=$(recipe_json_path "$name")
+        while IFS= read -r dep; do
+            [ -n "$dep" ] || continue
+            if [ "$dep" = "$wanted" ]; then
+                printf '%s\n' "$name"
+                break
+            fi
+        done < <(recipe_json_lines "$file" '.depends[]?')
+    done
+}
+
+
+source "$(dirname "${BASH_SOURCE[0]}")/modules/recipe_edit.sh"
+
 recipe_build_plan() {
     recipe_validate_registry
     recipe_scan_initial_plan

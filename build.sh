@@ -45,7 +45,7 @@ collect_supported_devs() {
 }
 
 print_usage() {
-    echo "Usage: $0 <device> [debug|container|container_debug|plan]"
+    echo "Usage: $0 <device> [debug|container|container_debug|recipe_preview|recipe_config]"
     echo "       ./start.sh"
 }
 
@@ -98,8 +98,9 @@ prompt_select_build_mode() {
         echo "  2) debug"
         echo "  3) container"
         echo "  4) container_debug"
-        echo "  5) plan"
-        printf "Select build mode (1-5, q to quit): "
+        echo "  5) recipe_config"
+        echo "  6) recipe_preview"
+        printf "Select build mode (1-6, q to quit): "
 
         if ! read -r input; then
             echo
@@ -133,11 +134,16 @@ prompt_select_build_mode() {
         fi
 
         if [[ "$input" =~ ^[[:space:]]*5[[:space:]]*$ ]]; then
-            Build_Mod="plan"
+            Build_Mod="recipe_config"
             return
         fi
 
-        echo "Invalid selection. Please enter 1, 2, 3, 4, or 5."
+        if [[ "$input" =~ ^[[:space:]]*6[[:space:]]*$ ]]; then
+            Build_Mod="recipe_preview"
+            return
+        fi
+
+        echo "Invalid selection. Please enter 1, 2, 3, 4, 5, or 6."
     done
 }
 
@@ -352,10 +358,14 @@ COMMIT_HASH=${COMMIT_HASH:-none}
 if [[ -d action_build ]]; then
     BUILD_DIR="action_build"
 fi
-if [[ $Build_Mod == "plan" ]]; then
+if [[ $Build_Mod == "recipe_preview" || $Build_Mod == "recipe_config" ]]; then
     BASE_PATH="$BASE_PATH" source "$BASE_PATH/recipe.sh"
     recipe_init "$Dev" "$INI_FILE" "$BASE_PATH/../$BUILD_DIR" "$REPO_URL" "$REPO_BRANCH" "$BASE_PATH"
-    recipe_print_plan
+    if [[ $Build_Mod == "recipe_config" ]]; then
+        recipe_open_config_cli
+    else
+        recipe_print_plan
+    fi
     exit 0
 fi
 
