@@ -38,6 +38,9 @@ git_clone_clean "https://github.com/marlonrichert/zsh-autocomplete.git" "$plugin
 git_clone_clean "https://github.com/zsh-users/zsh-autosuggestions.git" "$plugins_dir/zsh-autosuggestions"
 git_clone_clean "https://github.com/zsh-users/zsh-syntax-highlighting.git" "$plugins_dir/zsh-syntax-highlighting"
 
+# Remove all .git directories to save space in the firmware package
+find "$ohmyzsh_dir" -name ".git" -exec rm -rf {} +
+
 install -Dm0644 "$RECIPE_DIR/files/root/.zshrc" "$base_files_path/root/.zshrc"
 
 echo "ohmyzsh: installed oh-my-zsh and zsh plugins"
