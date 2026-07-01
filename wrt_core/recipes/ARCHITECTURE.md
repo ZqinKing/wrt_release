@@ -22,9 +22,8 @@ wrt_core/
   recipe.sh                              # planner/runner；Bash + jq
   recipes/
     import_registry.json                 # IMPORT_PACKAGES 来源 registry
-    schemas/
-      recipe.schema.json
-      import-registry.schema.json
+    recipe.schema.json
+    import-registry.schema.json
     <recipe-name>/
       recipe.json
       apply.sh                           # 可选；复杂动作钩子
