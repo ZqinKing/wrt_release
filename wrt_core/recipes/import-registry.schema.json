@@ -3,9 +3,13 @@
   "$id": "https://wrt-release.local/recipes/schemas/import-registry.schema.json",
   "type": "object",
   "additionalProperties": false,
-  "required": ["sources"],
+  "required": [
+    "sources"
+  ],
   "properties": {
-    "$schema": { "type": "string" },
+    "$schema": {
+      "type": "string"
+    },
     "sources": {
       "type": "object",
       "propertyNames": {
@@ -14,11 +18,25 @@
       "additionalProperties": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["gitUrl"],
+        "required": [
+          "gitUrl"
+        ],
         "properties": {
-          "gitUrl": { "type": "string" },
-          "branch": { "type": ["string", "null"] },
-          "sparseRoot": { "type": ["string", "null"] }
+          "gitUrl": {
+            "type": "string"
+          },
+          "branch": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sparseRoot": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
         }
       }
     }
