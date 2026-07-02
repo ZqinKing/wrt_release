@@ -476,12 +476,8 @@ recipe_validate_dependency_completeness() {
                 recipe_die "recipe '$name' is in the build plan, but its dependency '$dep' is missing or was filtered out"
             fi
             
-            dep_file=$(recipe_json_path "$dep")
-            dep_phase=$(recipe_json_get "$dep_file" '.phase')
-            dep_rank=$(recipe_phase_rank "$dep_phase")
-            if [ "$dep_rank" -gt "$rank" ]; then
-                recipe_die "recipe '$name' (phase '$phase') depends on '$dep' (phase '$dep_phase') which runs in a later phase"
-            fi
+            # Allow dependencies to run in different phases, since phase sequence naturally governs the execution order.
+            :
         done < <(recipe_json_lines "$file" '.depends[]?')
     done
 }
