@@ -14,6 +14,8 @@ REPO_URL=$1
 REPO_BRANCH=$2
 BUILD_DIR=$3
 COMMIT_HASH=$4
+TARGET_NAME=$5
+TARGET_INI=$6
 
 # 转换为绝对路径，避免后续 cd 后路径失效。
 if [[ "$BUILD_DIR" != /* ]]; then
@@ -36,6 +38,7 @@ source "$SCRIPT_DIR/modules/feeds.sh"
 source "$SCRIPT_DIR/modules/custom_feed.sh"
 source "$SCRIPT_DIR/modules/verify.sh"
 source "$SCRIPT_DIR/modules/docker.sh"
+source "$SCRIPT_DIR/recipe.sh"
 source "$SCRIPT_DIR/modules/cups.sh"
 source "$SCRIPT_DIR/modules/feed_source_fixes.sh"
 source "$SCRIPT_DIR/modules/package_source_updates.sh"
@@ -43,18 +46,35 @@ source "$SCRIPT_DIR/modules/target_fixes.sh"
 source "$SCRIPT_DIR/modules/luci_fixes.sh"
 source "$SCRIPT_DIR/modules/service_fixes.sh"
 
+init_recipes() {
+    if [[ -n "$TARGET_NAME" && -n "$TARGET_INI" ]]; then
+        recipe_init "$TARGET_NAME" "$TARGET_INI" "$BUILD_DIR" "$REPO_URL" "$REPO_BRANCH" "$BASE_PATH"
+        recipe_print_plan
+    fi
+}
+
+run_recipe_phase_if_enabled() {
+    local phase="$1"
+    if [[ -n "$TARGET_NAME" && -n "$TARGET_INI" ]]; then
+        recipe_run_phase "$phase"
+    fi
+}
 
 # 阶段顺序不可随意调整：feeds install 前后依赖的目录不同。
 stage_repo_checkout() {
     # 从干净的上游源码树开始，保证后续修正基线一致。
+    run_recipe_phase_if_enabled pre_clone
     clone_repo
     clean_up
     reset_feeds_conf
+    run_recipe_phase_if_enabled post_clone
 }
 
 stage_upstream_feeds_update() {
     # 先生成上游 feeds/* 工作树。
+    run_recipe_phase_if_enabled pre_feeds
     update_feeds
+    run_recipe_phase_if_enabled post_feeds_update
 }
 
 stage_feed_source_cleanup() {
@@ -118,6 +138,7 @@ stage_pre_install_source_fixes() {
 stage_feeds_install() {
     # install 后才会生成 package/feeds/*。
     install_feeds
+    run_recipe_phase_if_enabled post_feeds_install
 }
 
 stage_post_install_package_fixes() {
@@ -139,6 +160,7 @@ stage_post_install_package_fixes() {
 }
 
 main() {
+    init_recipes
     stage_repo_checkout
     stage_upstream_feeds_update
     stage_feed_source_cleanup

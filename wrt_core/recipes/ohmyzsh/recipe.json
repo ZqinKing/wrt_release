@@ -1,0 +1,37 @@
+{
+  "$schema": "../recipe.schema.json",
+  "name": "ohmyzsh",
+  "description": "为固件预置 oh-my-zsh、默认 zshrc 与常用 zsh 插件",
+  "enabled": false,
+  "phase": "pre_defconfig",
+  "depends": [],
+  "conflicts": [],
+  "tags": [
+    "shell",
+    "terminal",
+    "zsh"
+  ],
+  "when": {
+    "targets": [],
+    "repo": [],
+    "branch": [],
+    "tags": []
+  },
+  "actions": {
+    "addFeeds": [],
+    "removeFeeds": [],
+    "importPackages": [],
+    "removePackageDirs": [],
+    "patches": [],
+    "files": [
+      {
+        "source": "files/root/.zshrc",
+        "target": "package/base-files/files/root/.zshrc"
+      }
+    ],
+    "configs": [
+      "configs/ohmyzsh.config"
+    ],
+    "script": "apply.sh"
+  }
+}

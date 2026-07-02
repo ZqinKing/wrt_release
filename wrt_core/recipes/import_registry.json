@@ -1,0 +1,15 @@
+{
+  "$schema": "./import-registry.schema.json",
+  "sources": {
+    "awg-openwrt": {
+      "gitUrl": "https://github.com/Slava-Shchipunov/awg-openwrt.git",
+      "branch": "master",
+      "sparseRoot": null
+    },
+    "kenzok8-small-package": {
+      "gitUrl": "https://github.com/kenzok8/small-package.git",
+      "branch": "main",
+      "sparseRoot": null
+    }
+  }
+}

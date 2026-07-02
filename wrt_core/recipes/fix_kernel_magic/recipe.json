@@ -1,0 +1,30 @@
+{
+  "$schema": "../recipe.schema.json",
+  "name": "fix_kernel_magic",
+  "description": "按目标 KERNEL_VERMAGIC/KERNEL_MODULES 修正内核 vermagic 与 kmod distfeeds",
+  "enabled": false,
+  "phase": "post_clone",
+  "depends": [],
+  "conflicts": [],
+  "tags": [
+    "kernel",
+    "kmod",
+    "target"
+  ],
+  "when": {
+    "targets": [],
+    "repo": [],
+    "branch": [],
+    "tags": []
+  },
+  "actions": {
+    "addFeeds": [],
+    "removeFeeds": [],
+    "importPackages": [],
+    "removePackageDirs": [],
+    "patches": [],
+    "files": [],
+    "configs": [],
+    "script": "apply.sh"
+  }
+}

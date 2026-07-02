@@ -1,0 +1,143 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://wrt-release.local/recipes/schemas/recipe.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "name",
+    "description",
+    "enabled",
+    "phase",
+    "depends",
+    "conflicts",
+    "tags",
+    "when",
+    "actions"
+  ],
+  "properties": {
+    "$schema": { "type": "string" },
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$"
+    },
+    "description": { "type": "string" },
+    "enabled": { "type": "boolean" },
+    "priority": { "type": "integer" },
+    "phase": {
+      "type": "string",
+      "enum": [
+        "pre_clone",
+        "post_clone",
+        "pre_feeds",
+        "post_feeds_update",
+        "post_feeds_install",
+        "pre_defconfig",
+        "post_defconfig",
+        "finalize"
+      ]
+    },
+    "depends": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+      "uniqueItems": true
+    },
+    "conflicts": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+      "uniqueItems": true
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" },
+      "uniqueItems": true
+    },
+    "when": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["targets", "repo", "branch", "tags"],
+      "properties": {
+        "targets": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "repo": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "branch": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "tags": { "type": "array", "items": { "type": "string" }, "uniqueItems": true }
+      }
+    },
+    "actions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "addFeeds",
+        "removeFeeds",
+        "importPackages",
+        "removePackageDirs",
+        "patches",
+        "files",
+        "configs",
+        "script"
+      ],
+      "properties": {
+        "addFeeds": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "removeFeeds": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true
+        },
+        "importPackages": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["source", "name"],
+            "properties": {
+              "source": { "type": "string" },
+              "name": { "type": "string" },
+              "target": { "type": "string" }
+            }
+          }
+        },
+        "removePackageDirs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true
+        },
+        "patches": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["source", "target"],
+            "properties": {
+              "source": { "type": "string" },
+              "target": { "type": "string" },
+              "mode": { "type": "string", "pattern": "^[0-7]{3,4}$" }
+            }
+          }
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["source", "target"],
+            "properties": {
+              "source": { "type": "string" },
+              "target": { "type": "string" },
+              "mode": { "type": "string", "pattern": "^[0-7]{3,4}$" }
+            }
+          }
+        },
+        "configs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true
+        },
+        "script": {
+          "type": ["string", "null"]
+        }
+      }
+    }
+  }
+}

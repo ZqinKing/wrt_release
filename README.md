@@ -11,7 +11,7 @@
 ```bash
 sudo apt -y update
 sudo apt -y full-upgrade
-sudo apt install -y dos2unix libfuse-dev
+sudo apt install -y dos2unix libfuse-dev jq
 sudo bash -c 'bash <(curl -sL https://build-scripts.immortalwrt.org/init_build_environment.sh)'
 ```
 
@@ -37,7 +37,7 @@ cd wrt_release
 ### 直接指定设备
 
 ```bash
-./build.sh <设备配置名> [debug|container|container_debug]
+./build.sh <设备配置名> [debug|container|container_debug|recipe_preview|recipe_config]
 ```
 
 构建模式说明：
@@ -48,6 +48,18 @@ cd wrt_release
 | `debug` | `./build.sh x64_immwrt debug` | 执行到 `make defconfig` 后停止，用于检查配置，不产出固件。 |
 | `container` | `./build.sh x64_immwrt container` | 使用 Docker 容器执行完整构建，减少本机环境差异。 |
 | `container_debug` | `./build.sh x64_immwrt container_debug` | 在 Docker 容器中执行 debug 流程并进入交互 shell。 |
+| `recipe_preview` | `./build.sh x64_immwrt recipe_preview` | 仅打印当前目标的 recipe 解析结果，不进入交互。 |
+| `recipe_config` | `./build.sh x64_immwrt recipe_config` | 打开 recipe 交互式配置界面，可切换 target 覆盖与 recipe 默认启用状态。 |
+
+`recipe_config` 模式命令：
+
+- `t <index>`：切换当前 target 的 recipe 开关，写回 `wrt_core/compilecfg/<设备配置名>.ini` 中的 `RECIPES` / `DISABLE_RECIPES`
+- `d <index>`：切换 recipe 默认 `enabled`，写回 `wrt_core/recipes/<recipe>/recipe.json`
+- `p`：打印当前解析后的 recipe 执行顺序
+- `h`：重新显示帮助
+- `q`：退出交互界面
+
+依赖中的 recipe 不能直接关闭；必须先关闭依赖它的 recipe。非交互 `recipe_preview` 仍保持只打印并退出。
 
 编译完成后，脚本会从 `<BUILD_DIR>/bin/targets/` 收集固件文件到仓库根目录的 `firmware/`。每次完整构建前会清理旧的目标固件文件，`firmware/Packages.manifest` 会被移除。
 
