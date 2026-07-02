@@ -7,7 +7,7 @@ recipe_sort_unique_lines() {
         return 0
     fi
 
-    printf '%b' "$content" | awk 'NF { print }' | LC_ALL=C sort -u
+    printf '%s\n' "$content" | awk 'NF { print }' | LC_ALL=C sort -u
 }
 
 recipe_write_json_enabled() {
@@ -95,11 +95,15 @@ recipe_set_add() {
     local name="$2"
 
     if recipe_set_contains "$content" "$name"; then
-        printf '%b' "$content"
+        printf '%s\n' "$content"
         return 0
     fi
 
-    printf '%b%s\n' "$content" "$name"
+    if [ -z "$content" ]; then
+        printf '%s\n' "$name"
+    else
+        printf '%s\n%s\n' "$content" "$name"
+    fi
 }
 
 recipe_set_remove() {
