@@ -1,43 +1,4 @@
 #!/usr/bin/env bash
-# Module: General Preparation
+# 兼容旧入口，仓库准备逻辑已迁移到 repo.sh。
 
-clone_repo() {
-    if [[ ! -d $BUILD_DIR ]]; then
-        echo "克隆仓库: $REPO_URL 分支: $REPO_BRANCH"
-        if ! git_retry clone --depth 1 -b "$REPO_BRANCH" "$REPO_URL" "$BUILD_DIR"; then
-            echo "错误：克隆仓库 $REPO_URL 失败" >&2
-            exit 1
-        fi
-    fi
-}
-
-clean_up() {
-    if [[ ! -d "$BUILD_DIR" ]]; then
-        echo "Build directory $BUILD_DIR does not exist"
-        return
-    fi
-    cd "$BUILD_DIR"
-    if [[ -f ".config" ]]; then
-        \rm -f ".config"
-    fi
-    if [[ -d "tmp" ]]; then
-        \rm -rf "tmp"
-    fi
-    if [[ -d "logs" ]]; then
-        \rm -rf "logs/*"
-    fi
-    if [[ -d "feeds" ]]; then
-        ./scripts/feeds clean
-    fi
-    mkdir -p "tmp"
-    echo "1" >"tmp/.build"
-}
-
-reset_feeds_conf() {
-    git_retry reset --hard "origin/$REPO_BRANCH"
-    git_retry clean -f -d
-    git_retry pull
-    if [[ $COMMIT_HASH != "none" ]]; then
-        git_retry checkout "$COMMIT_HASH"
-    fi
-}
+source "$(dirname "${BASH_SOURCE[0]}")/repo.sh"

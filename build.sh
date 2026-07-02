@@ -2,7 +2,7 @@
 
 set -e
 
-# Determine wrt_core path
+# 定位 wrt_core，兼容仓库根目录或上级目录调用。
 if [ -d "wrt_core" ]; then
     WRT_CORE_PATH="wrt_core"
 elif [ -d "../wrt_core" ]; then
@@ -21,6 +21,7 @@ Build_Mod=$2
 
 SUPPORTED_DEVS=()
 
+# 只有 compilecfg 与 deconfig 同名成对存在的设备才可构建。
 collect_supported_devs() {
     local ini_file
     local dev_key
@@ -348,6 +349,7 @@ apply_config() {
     apply_target_config_fragments
 }
 
+# 读取设备元信息，确定上游源码和构建目录。
 REPO_URL=$(read_ini_by_key "REPO_URL")
 REPO_BRANCH=$(read_ini_by_key "REPO_BRANCH")
 REPO_BRANCH=${REPO_BRANCH:-main}
@@ -356,6 +358,7 @@ COMMIT_HASH=$(read_ini_by_key "COMMIT_HASH")
 COMMIT_HASH=${COMMIT_HASH:-none}
 
 if [[ -d action_build ]]; then
+    # GitHub Actions 使用 action_build 作为固定构建目录。
     BUILD_DIR="action_build"
 fi
 if [[ $Build_Mod == "recipe_preview" || $Build_Mod == "recipe_config" ]]; then

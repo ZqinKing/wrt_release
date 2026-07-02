@@ -132,7 +132,7 @@ https://github.com/kenzok8/small-package.git
 - `wrt_core/pre_clone_action.sh`：GitHub Actions 预克隆辅助脚本。
 - `wrt_core/compilecfg/`：设备构建元信息 `.ini`。
 - `wrt_core/deconfig/`：设备和共享默认配置 `.config`。
-- `wrt_core/modules/`：模块化脚本，包括 `general.sh`、`network.sh`、`feeds.sh`、`packages.sh`、`system.sh`、`cups.sh`、`docker.sh`。
+- `wrt_core/modules/`：模块化脚本，包括仓库准备、网络重试、feeds/custom_feed、源码修正、LuCI 修正、服务修正、验证、Docker、CUPS 等静态职责模块。
 - `wrt_core/patches/`：补丁、默认设置、Wi-Fi 初始化、NSS 诊断、PBR 规则和其他构建时注入文件。
 
 ## 9. OAF（应用过滤）功能使用说明

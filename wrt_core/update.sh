@@ -17,7 +17,7 @@ COMMIT_HASH=$4
 TARGET_NAME=$5
 TARGET_INI=$6
 
-# Convert BUILD_DIR to absolute path
+# 转换为绝对路径，避免后续 cd 后路径失效。
 if [[ "$BUILD_DIR" != /* ]]; then
     BUILD_DIR="$(pwd)/$BUILD_DIR"
 fi
@@ -31,15 +31,20 @@ LAN_ADDR="192.168.1.1"
 SCRIPT_DIR=$(cd $(dirname $0) && pwd)
 BASE_PATH=${BASE_PATH:-$SCRIPT_DIR}
 
-source "$SCRIPT_DIR/modules/general.sh"
+# 按静态职责加载模块，执行顺序仍由本脚本统一控制。
 source "$SCRIPT_DIR/modules/network.sh"
+source "$SCRIPT_DIR/modules/repo.sh"
 source "$SCRIPT_DIR/modules/feeds.sh"
-source "$SCRIPT_DIR/modules/packages.sh"
-source "$SCRIPT_DIR/modules/system.sh"
-source "$SCRIPT_DIR/modules/cups.sh"
+source "$SCRIPT_DIR/modules/custom_feed.sh"
+source "$SCRIPT_DIR/modules/verify.sh"
 source "$SCRIPT_DIR/modules/docker.sh"
 source "$SCRIPT_DIR/recipe.sh"
-
+source "$SCRIPT_DIR/modules/cups.sh"
+source "$SCRIPT_DIR/modules/feed_source_fixes.sh"
+source "$SCRIPT_DIR/modules/package_source_updates.sh"
+source "$SCRIPT_DIR/modules/target_fixes.sh"
+source "$SCRIPT_DIR/modules/luci_fixes.sh"
+source "$SCRIPT_DIR/modules/service_fixes.sh"
 
 init_recipes() {
     if [[ -n "$TARGET_NAME" && -n "$TARGET_INI" ]]; then
@@ -55,19 +60,36 @@ run_recipe_phase_if_enabled() {
     fi
 }
 
-main() {
-    init_recipes
+# 阶段顺序不可随意调整：feeds install 前后依赖的目录不同。
+stage_repo_checkout() {
+    # 从干净的上游源码树开始，保证后续修正基线一致。
     run_recipe_phase_if_enabled pre_clone
     clone_repo
     clean_up
     reset_feeds_conf
     run_recipe_phase_if_enabled post_clone
+}
+
+stage_upstream_feeds_update() {
+    # 先生成上游 feeds/* 工作树。
     run_recipe_phase_if_enabled pre_feeds
     update_feeds
     run_recipe_phase_if_enabled post_feeds_update
+}
+
+stage_feed_source_cleanup() {
+    # 清理会与 custom_feed 替换包冲突的上游 feed 包。
     remove_unwanted_packages
     remove_tweaked_packages
+}
+
+stage_custom_feed_prepare() {
+    # custom_feed 以 src-link 加入 feeds，仍属于 install 前阶段。
     install_custom_feed
+}
+
+stage_pre_install_source_fixes() {
+    # 这里仅修改源码树与 feeds/*，不能依赖 package/feeds/*。
     update_homeproxy
     fix_default_set
     fix_miniupnpd
@@ -111,8 +133,16 @@ main() {
     fix_easytier_mk
     remove_attendedsysupgrade
     fix_kconfig_recursive_dependency
+}
+
+stage_feeds_install() {
+    # install 后才会生成 package/feeds/*。
     install_feeds
     run_recipe_phase_if_enabled post_feeds_install
+}
+
+stage_post_install_package_fixes() {
+    # 这里处理已安装到 package/feeds/* 的包和最终一致性检查。
     verify_custom_feed_installed_paths
     docker_stack_sync_nftables_compat "$BUILD_DIR" "0"
     fix_cups_libcups_avahi_depends
@@ -127,6 +157,17 @@ main() {
     install_pbr_cmcc
     fix_pbr_ip_forward
     # apply_hash_fixes
+}
+
+main() {
+    init_recipes
+    stage_repo_checkout
+    stage_upstream_feeds_update
+    stage_feed_source_cleanup
+    stage_custom_feed_prepare
+    stage_pre_install_source_fixes
+    stage_feeds_install
+    stage_post_install_package_fixes
 }
 
 main "$@"
