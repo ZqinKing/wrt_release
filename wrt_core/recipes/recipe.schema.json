@@ -22,6 +22,7 @@
     },
     "description": { "type": "string" },
     "enabled": { "type": "boolean" },
+    "priority": { "type": "integer" },
     "phase": {
       "type": "string",
       "enum": [

@@ -127,6 +127,7 @@ recipe_validate_structure() {
         (.name | type == "string" and length > 0) and
         (.description | type == "string") and
         (.enabled | type == "boolean") and
+        ((has("priority") | not) or (.priority == null) or (.priority | type == "number")) and
         (.phase | type == "string" and length > 0) and
         (.depends | type == "array") and
         (.conflicts | type == "array") and
@@ -381,25 +382,234 @@ recipe_validate_paths() {
     done
 }
 
-recipe_sort_plan() {
-    local sortable=""
+recipe_array_contains() {
+    local array_name="$1"
+    local value="$2"
+    local item
+    eval '
+        for item in "${'"$array_name"'[@]}"; do
+            if [ "$item" = "$value" ]; then
+                return 0
+            fi
+        done
+    '
+    return 1
+}
+
+recipe_is_safe_relative_path() {
+    local path="$1"
+    if [[ "$path" =~ ^/ ]] || [[ "$path" =~ ^[a-zA-Z]: ]]; then
+        return 1
+    fi
+    if [[ "/$path/" =~ /\.\./ ]]; then
+        return 1
+    fi
+    return 0
+}
+
+recipe_validate_action_paths() {
+    local name
+    local file
+    local target
+    local source
+    local remove_dir
+    local config
+
+    for name in "${RECIPE_PLAN[@]}"; do
+        file=$(recipe_json_path "$name")
+        
+        while IFS= read -r target; do
+            [ -n "$target" ] || continue
+            recipe_is_safe_relative_path "$target" || recipe_die "recipe '$name' has unsafe target path '$target'"
+        done < <(recipe_json_lines "$file" '.actions.files[]?.target')
+        
+        while IFS= read -r source; do
+            [ -n "$source" ] || continue
+            recipe_is_safe_relative_path "$source" || recipe_die "recipe '$name' has unsafe source path '$source'"
+        done < <(recipe_json_lines "$file" '.actions.files[]?.source')
+
+        while IFS= read -r target; do
+            [ -n "$target" ] || continue
+            recipe_is_safe_relative_path "$target" || recipe_die "recipe '$name' has unsafe patch target path '$target'"
+        done < <(recipe_json_lines "$file" '.actions.patches[]?.target')
+        
+        while IFS= read -r source; do
+            [ -n "$source" ] || continue
+            recipe_is_safe_relative_path "$source" || recipe_die "recipe '$name' has unsafe patch source path '$source'"
+        done < <(recipe_json_lines "$file" '.actions.patches[]?.source')
+
+        while IFS= read -r remove_dir; do
+            [ -n "$remove_dir" ] || continue
+            recipe_is_safe_relative_path "$remove_dir" || recipe_die "recipe '$name' has unsafe removePackageDirs path '$remove_dir'"
+        done < <(recipe_json_lines "$file" '.actions.removePackageDirs[]?')
+
+        while IFS= read -r target; do
+            [ -n "$target" ] || continue
+            recipe_is_safe_relative_path "$target" || recipe_die "recipe '$name' has unsafe importPackages target path '$target'"
+        done < <(recipe_json_lines "$file" '.actions.importPackages[]?.target // empty')
+
+        while IFS= read -r config; do
+            [ -n "$config" ] || continue
+            recipe_is_safe_relative_path "$config" || recipe_die "recipe '$name' has unsafe configs path '$config'"
+        done < <(recipe_json_lines "$file" '.actions.configs[]?')
+    done
+}
+
+recipe_validate_dependency_completeness() {
     local name
     local file
     local phase
     local rank
+    local dep
+    local dep_file
+    local dep_phase
+    local dep_rank
 
     for name in "${RECIPE_PLAN[@]}"; do
         file=$(recipe_json_path "$name")
         phase=$(recipe_json_get "$file" '.phase')
         rank=$(recipe_phase_rank "$phase")
-        sortable="${sortable}${rank} ${name}\n"
+        
+        while IFS= read -r dep; do
+            [ -n "$dep" ] || continue
+            if ! recipe_has_name "$dep"; then
+                recipe_die "recipe '$name' is in the build plan, but its dependency '$dep' is missing or was filtered out"
+            fi
+            
+            dep_file=$(recipe_json_path "$dep")
+            dep_phase=$(recipe_json_get "$dep_file" '.phase')
+            dep_rank=$(recipe_phase_rank "$dep_phase")
+            if [ "$dep_rank" -gt "$rank" ]; then
+                recipe_die "recipe '$name' (phase '$phase') depends on '$dep' (phase '$dep_phase') which runs in a later phase"
+            fi
+        done < <(recipe_json_lines "$file" '.depends[]?')
     done
+}
 
-    RECIPE_PLAN=()
-    while IFS= read -r name; do
-        [ -n "$name" ] || continue
-        RECIPE_PLAN+=("$name")
-    done < <(printf '%b' "$sortable" | LC_ALL=C sort -n -k1,1 -k2,2 | cut -d' ' -f2-)
+recipe_sort_phase_kahn() {
+    local phase="$1"
+    shift
+    local phase_recipes=("$@")
+    [ ${#phase_recipes[@]} -eq 0 ] && return 0
+
+    local sorted=()
+    local ready=()
+    
+    local in_degree=()
+    local priority=()
+    
+    local i name dep file
+    for i in "${!phase_recipes[@]}"; do
+        name="${phase_recipes[i]}"
+        file=$(recipe_json_path "$name")
+        priority[i]=$(recipe_json_get_optional "$file" '.priority // 0')
+        in_degree[i]=0
+        
+        while IFS= read -r dep; do
+            [ -n "$dep" ] || continue
+            if recipe_array_contains "phase_recipes" "$dep"; then
+                in_degree[i]=$((in_degree[i] + 1))
+            fi
+        done < <(recipe_json_lines "$file" '.depends[]?')
+    done
+    
+    for i in "${!phase_recipes[@]}"; do
+        if [ "${in_degree[i]}" -eq 0 ]; then
+            ready+=("${phase_recipes[i]}")
+        fi
+    done
+    
+    while [ ${#ready[@]} -gt 0 ]; do
+        local r_len=${#ready[@]}
+        local r_i r_j temp
+        for ((r_i=0; r_i<r_len; r_i++)); do
+            for ((r_j=r_i+1; r_j<r_len; r_j++)); do
+                local name_i="${ready[r_i]}"
+                local name_j="${ready[r_j]}"
+                
+                local prio_i=0
+                local idx
+                for idx in "${!phase_recipes[@]}"; do
+                    if [ "${phase_recipes[idx]}" = "$name_i" ]; then
+                        prio_i="${priority[idx]}"
+                        break
+                    fi
+                done
+                
+                local prio_j=0
+                for idx in "${!phase_recipes[@]}"; do
+                    if [ "${phase_recipes[idx]}" = "$name_j" ]; then
+                        prio_j="${priority[idx]}"
+                        break
+                    fi
+                done
+                
+                local swap=0
+                if [ "$prio_j" -gt "$prio_i" ]; then
+                    swap=1
+                elif [ "$prio_j" -eq "$prio_i" ]; then
+                    if [[ "$name_j" < "$name_i" ]]; then
+                        swap=1
+                    fi
+                fi
+                
+                if [ "$swap" -eq 1 ]; then
+                    temp="${ready[r_i]}"
+                    ready[r_i]="${ready[r_j]}"
+                    ready[r_j]="$temp"
+                fi
+            done
+        done
+        
+        local u="${ready[0]}"
+        ready=("${ready[@]:1}")
+        sorted+=("$u")
+        
+        for i in "${!phase_recipes[@]}"; do
+            name="${phase_recipes[i]}"
+            file=$(recipe_json_path "$name")
+            if recipe_json_lines "$file" '.depends[]?' | grep -Fxq "$u"; then
+                in_degree[i]=$((in_degree[i] - 1))
+                if [ "${in_degree[i]}" -eq 0 ]; then
+                    ready+=("$name")
+                fi
+            fi
+        done
+    done
+    
+    if [ "${#sorted[@]}" -ne "${#phase_recipes[@]}" ]; then
+        recipe_die "circular dependency detected in phase '$phase'"
+    fi
+    
+    for name in "${sorted[@]}"; do
+        printf '%s\n' "$name"
+    done
+}
+
+recipe_sort_plan() {
+    local sorted_plan=()
+    local phase
+    
+    for phase in "${RECIPE_PHASES[@]}"; do
+        local phase_recipes=()
+        local name
+        local file
+        for name in "${RECIPE_PLAN[@]}"; do
+            file=$(recipe_json_path "$name")
+            if [ "$(recipe_json_get "$file" '.phase')" = "$phase" ]; then
+                phase_recipes+=("$name")
+            fi
+        done
+        
+        if [ ${#phase_recipes[@]} -gt 0 ]; then
+            while IFS= read -r name; do
+                [ -n "$name" ] || continue
+                sorted_plan+=("$name")
+            done < <(recipe_sort_phase_kahn "$phase" "${phase_recipes[@]}")
+        fi
+    done
+    
+    RECIPE_PLAN=("${sorted_plan[@]}")
 }
 
 recipe_list_all_names() {
@@ -486,7 +696,9 @@ recipe_build_plan() {
     recipe_filter_conditions
     recipe_resolve_depends
     recipe_filter_conditions
+    recipe_validate_dependency_completeness
     recipe_validate_conflicts
+    recipe_validate_action_paths
     recipe_validate_paths
     recipe_sort_plan
 }
@@ -499,7 +711,12 @@ recipe_init() {
     RECIPE_REPO_BRANCH="$5"
     RECIPE_BASE_PATH="${6:-$BASE_PATH}"
 
-    recipe_require_jq
+    if ! command -v jq >/dev/null 2>&1; then
+        echo "recipe: warning: jq is not installed. Skipping recipe system..." >&2
+        RECIPE_PLAN=()
+        return 0
+    fi
+
     if [ -z "$RECIPE_TARGET_NAME" ] || [ -z "$RECIPE_TARGET_INI" ] || [ -z "$RECIPE_BUILD_DIR" ]; then
         recipe_die "recipe_init requires target name, target ini, and build dir"
     fi
