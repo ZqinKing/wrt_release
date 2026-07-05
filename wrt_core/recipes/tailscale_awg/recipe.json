@@ -51,7 +51,17 @@
       "package/feeds/small8/tailscale",
       "package/feeds/custom_feed/tailscale"
     ],
-    "patches": [],
+    "patches": [
+      {
+        "source": "patches/fix_upx_compress.patch",
+        "target": "package/tailscale",
+        "strip": 1,
+        "forward": true,
+        "backup": false,
+        "rejectFile": false,
+        "fuzz": 0
+      }
+    ],
     "files": [],
     "configs": [
       "configs/tailscale_awg.config"

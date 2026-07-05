@@ -1,0 +1,25 @@
+diff --git a/Makefile b/Makefile
+index 0d85e2b..632edfc 100644
+--- a/Makefile
++++ b/Makefile
+@@ -62,7 +62,6 @@ endef
+ 
+ define Package/tailscale/install
+ 	$(INSTALL_DIR) $(1)/usr/sbin $(1)/etc/init.d $(1)/etc/config
+-	$(INSTALL_BIN) $(GO_PKG_BUILD_BIN_DIR)/tailscaled $(1)/usr/sbin
+ 
+ ifneq ($(DISABLE_UPX),1)
+ 	if ! $(TOPDIR)/upx/upx -t $(GO_PKG_BUILD_BIN_DIR)/tailscaled >/dev/null 2>&1; then \
+@@ -74,11 +73,10 @@ ifneq ($(DISABLE_UPX),1)
+ else
+ 	echo "==> UPX disabled on ARCH $(ARCH)"
+ endif
++	$(INSTALL_BIN) $(GO_PKG_BUILD_BIN_DIR)/tailscaled $(1)/usr/sbin
+ 	# [Maintainer Note] Save a copy of the binary for the repository. 
+     # Feel free to remove the next two lines for local builds.
+ 	# 可选：以下两行仅用于为本项目仓库保留一份二进制副本，自行使用时可删除
+-	mkdir -p $(TOPDIR)/bin/packages/$(ARCH_PACKAGES)/base
+-	$(CP) $(GO_PKG_BUILD_BIN_DIR)/tailscaled $(TOPDIR)/bin/packages/$(ARCH_PACKAGES)/base/tailscaled
+ 
+ 	$(LN) tailscaled $(1)/usr/sbin/tailscale
+ 	$(INSTALL_BIN) ./files/tailscale.init $(1)/etc/init.d/tailscale
