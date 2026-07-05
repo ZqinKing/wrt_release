@@ -2,6 +2,7 @@
 set -euo pipefail
 
 base_files_path="$BUILD_DIR/package/base-files/files"
+passwd_path="$base_files_path/etc/passwd"
 ohmyzsh_dir="$base_files_path/root/.oh-my-zsh"
 plugins_dir="$ohmyzsh_dir/custom/plugins"
 
@@ -30,7 +31,20 @@ git_clone_clean() {
     fi
 }
 
-mkdir -p "$base_files_path/root"
+mkdir -p "$base_files_path/root" "$base_files_path/etc"
+
+if [ -f "$passwd_path" ]; then
+    if grep -qx 'root:x:0:0:root:/root:/bin/ash' "$passwd_path"; then
+        sed -i 's#^root:x:0:0:root:/root:/bin/ash$#root:x:0:0:root:/root:/bin/zsh#' "$passwd_path"
+        echo "ohmyzsh: changed root shell from /bin/ash to /bin/zsh"
+    elif grep -qx 'root:x:0:0:root:/root:/bin/zsh' "$passwd_path"; then
+        echo "ohmyzsh: root shell already set to /bin/zsh"
+    else
+        echo "ohmyzsh: Warning: unexpected root entry in $passwd_path, skipping shell change" >&2
+    fi
+else
+    echo "ohmyzsh: Warning: $passwd_path not found, skipping shell change" >&2
+fi
 
 git_clone_clean "https://github.com/ohmyzsh/ohmyzsh.git" "$ohmyzsh_dir"
 mkdir -p "$plugins_dir"
