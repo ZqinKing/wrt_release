@@ -363,7 +363,11 @@ if [[ -d action_build ]]; then
 fi
 if [[ $Build_Mod == "recipe_preview" || $Build_Mod == "recipe_config" ]]; then
     BASE_PATH="$BASE_PATH" source "$BASE_PATH/recipe.sh"
-    recipe_init "$Dev" "$INI_FILE" "$BASE_PATH/../$BUILD_DIR" "$REPO_URL" "$REPO_BRANCH" "$BASE_PATH"
+    recipe_allow_conflicts=0
+    if [[ $Build_Mod == "recipe_config" ]]; then
+        recipe_allow_conflicts=1
+    fi
+    recipe_init "$Dev" "$INI_FILE" "$BASE_PATH/../$BUILD_DIR" "$REPO_URL" "$REPO_BRANCH" "$BASE_PATH" "$recipe_allow_conflicts"
     if [[ $Build_Mod == "recipe_config" ]]; then
         BASE_PATH="$BASE_PATH" source "$BASE_PATH/modules/recipe_edit.sh"
         recipe_open_config_cli

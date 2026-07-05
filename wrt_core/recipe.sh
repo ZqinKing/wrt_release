@@ -22,6 +22,7 @@ RECIPE_REPO_BRANCH=""
 RECIPE_BUILD_DIR=""
 RECIPE_TARGET_TAGS=""
 RECIPE_BASE_PATH=""
+RECIPE_ALLOW_CONFLICTS=0
 
 recipe_die() {
     echo "recipe: $*" >&2
@@ -693,7 +694,9 @@ recipe_build_plan() {
     recipe_resolve_depends
     recipe_filter_conditions
     recipe_validate_dependency_completeness
-    recipe_validate_conflicts
+    if [ "$RECIPE_ALLOW_CONFLICTS" -ne 1 ]; then
+        recipe_validate_conflicts
+    fi
     recipe_validate_action_paths
     recipe_validate_paths
     recipe_build_import_registry
@@ -752,6 +755,7 @@ recipe_init() {
     RECIPE_REPO_URL="$4"
     RECIPE_REPO_BRANCH="$5"
     RECIPE_BASE_PATH="${6:-$BASE_PATH}"
+    RECIPE_ALLOW_CONFLICTS="${7:-0}"
 
     if ! command -v jq >/dev/null 2>&1; then
         echo "recipe: warning: jq is not installed. Skipping recipe system..." >&2

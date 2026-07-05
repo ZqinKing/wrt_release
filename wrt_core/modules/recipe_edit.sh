@@ -341,11 +341,20 @@ recipe_open_config_cli() {
         line=$(recipe_trim "$line")
         [ -n "$line" ] || continue
 
-        command=${line%%[[:space:]]*}
-        if [ "$command" = "$line" ]; then
-            index=''
+        if [[ "$line" =~ ^([td])([0-9]+)$ ]]; then
+            command="${BASH_REMATCH[1]}"
+            index="${BASH_REMATCH[2]}"
         else
-            index=$(recipe_trim "${line#${command}}")
+            command=${line%%[[:space:]]*}
+            if [ "$command" = "$line" ]; then
+                index=''
+            else
+                index=$(recipe_trim "${line#${command}}")
+            fi
+        fi
+
+        if [ -z "$command" ]; then
+            index=''
         fi
 
         case "$command" in
