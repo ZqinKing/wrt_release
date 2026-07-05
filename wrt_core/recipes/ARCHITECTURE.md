@@ -82,7 +82,7 @@ BUILD_DIR=immortalwrt
 
 BASE_CONFIG=deconfig/x64_immwrt.config
 CONFIG_FRAGMENTS=deconfig/compile_base.config,deconfig/proxy.config
-RECIPES=fix_kernel_magic,awg,tailscale_use_awg,ohmyzsh
+RECIPES=fix_kernel_magic,awg,tailscale_awg,ohmyzsh
 DISABLE_RECIPES=
 TARGET_TAGS=x86_64,immortalwrt,master
 KERNEL_VERMAGIC=
@@ -349,10 +349,17 @@ recipe 内联位置：`actions.importPackagesRegistry`
   - `pre_defconfig`
   - 通过 `awg-openwrt` registry source 导入 AmneziaWG 三个包目录
   - 追加 AWG config fragment
-- `tailscale_use_awg`
-  - `post_feeds_update`
-  - `depends: ["awg"]`
-  - 修改 tailscale source URL 与版本/hash
+- `upx`
+  - `pre_defconfig`
+  - 优先复用系统 `upx`，否则下载官方预编译包到构建树 `upx/upx`
+- `tailscale_awg`
+  - `pre_defconfig`
+  - `depends: ["upx"]`
+  - 删除官方 `tailscale` 包目录以避免同名冲突
+  - 导入 `openwrt-tailscale-awg` 的 `package/tailscale`
+  - 导入 `luci-app-tailscale-community` 并追加对应 config fragment
+  - 不使用额外脚本；直接保留上游 Makefile 的非关键附加导出行为
+  - 通过脚本清理第三方 `tailscale` Makefile 中仅用于仓库导出二进制的逻辑
 - `ohmyzsh`
   - `pre_defconfig`
   - 预置 zsh config、oh-my-zsh 与插件

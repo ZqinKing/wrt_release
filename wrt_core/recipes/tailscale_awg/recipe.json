@@ -1,0 +1,61 @@
+{
+  "$schema": "../recipe.schema.json",
+  "name": "tailscale_awg",
+  "description": "导入第三方 tailscale AWG 包与社区 LuCI，并移除官方 tailscale 以避免冲突",
+  "enabled": false,
+  "phase": "pre_defconfig",
+  "depends": [
+    "upx"
+  ],
+  "conflicts": [],
+  "tags": [
+    "vpn",
+    "tailscale",
+    "awg"
+  ],
+  "when": {
+    "targets": [],
+    "repo": [],
+    "branch": [],
+    "tags": []
+  },
+  "actions": {
+    "addFeeds": [],
+    "removeFeeds": [],
+    "importPackagesRegistry": {
+      "openwrt-tailscale-awg": {
+        "gitUrl": "https://github.com/LiuTangLei/openwrt-tailscale-awg.git",
+        "branch": "main",
+        "sparseRoot": null
+      },
+      "luci-app-tailscale-community": {
+        "gitUrl": "https://github.com/Tokisaki-Galaxy/luci-app-tailscale-community.git",
+        "branch": "main",
+        "sparseRoot": null
+      }
+    },
+    "importPackages": [
+      {
+        "source": "openwrt-tailscale-awg",
+        "name": "package/tailscale",
+        "target": "package/tailscale"
+      },
+      {
+        "source": "luci-app-tailscale-community",
+        "name": "luci-app-tailscale-community",
+        "target": "package/luci-app-tailscale-community"
+      }
+    ],
+    "removePackageDirs": [
+      "feeds/packages/net/tailscale",
+      "package/feeds/small8/tailscale",
+      "package/feeds/custom_feed/tailscale"
+    ],
+    "patches": [],
+    "files": [],
+    "configs": [
+      "configs/tailscale_awg.config"
+    ],
+    "script": null
+  }
+}
