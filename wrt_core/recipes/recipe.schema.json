@@ -128,7 +128,13 @@
             "properties": {
               "source": { "type": "string" },
               "target": { "type": "string" },
-              "mode": { "type": "string", "pattern": "^[0-7]{3,4}$" }
+              "strip": { "type": "integer", "minimum": 0 },
+              "binary": { "type": "boolean" },
+              "ignoreWhitespace": { "type": "boolean" },
+              "forward": { "type": "boolean" },
+              "backup": { "type": "boolean" },
+              "rejectFile": { "type": "boolean" },
+              "fuzz": { "type": "integer", "minimum": 0 }
             }
           }
         },

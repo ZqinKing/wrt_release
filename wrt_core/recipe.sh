@@ -160,7 +160,7 @@ recipe_validate_structure() {
         all(.actions.importPackagesRegistry[]?; (.gitUrl | type == "string" and length > 0) and ((has("branch") | not) or (.branch == null) or (.branch | type == "string")) and ((has("sparseRoot") | not) or (.sparseRoot == null) or (.sparseRoot | type == "string"))) and
         all(.actions.importPackages[]?; type == "object" and (.source | type == "string" and length > 0) and (.path | type == "string" and length > 0) and ((has("target") | not) or (.target | type == "string" and length > 0))) and
         all(.actions.removePackageDirs[]?; type == "string") and
-        all(.actions.patches[]?; type == "object" and (.source | type == "string" and length > 0) and (.target | type == "string" and length > 0) and ((has("mode") | not) or (.mode | type == "string" and test("^[0-7]{3,4}$")))) and
+        all(.actions.patches[]?; type == "object" and (.source | type == "string" and length > 0) and (.target | type == "string" and length > 0) and ((has("strip") | not) or (.strip | type == "number" and . >= 0 and floor == .)) and ((has("binary") | not) or (.binary | type == "boolean")) and ((has("ignoreWhitespace") | not) or (.ignoreWhitespace | type == "boolean")) and ((has("forward") | not) or (.forward | type == "boolean")) and ((has("backup") | not) or (.backup | type == "boolean")) and ((has("rejectFile") | not) or (.rejectFile | type == "boolean")) and ((has("fuzz") | not) or (.fuzz | type == "number" and . >= 0 and floor == .))) and
         all(.actions.files[]?; type == "object" and (.source | type == "string" and length > 0) and (.target | type == "string" and length > 0) and ((has("mode") | not) or (.mode | type == "string" and test("^[0-7]{3,4}$")))) and
         all(.actions.configs[]?; type == "string")
     ' "$file" >/dev/null || recipe_die "invalid recipe.json structure: $file"
@@ -372,7 +372,7 @@ recipe_validate_paths() {
                 recipe_die "multiple recipes write target path '$target'"
             fi
             seen_targets="${seen_targets}${target}\n"
-        done < <(recipe_json_lines "$file" '.actions.files[]?.target, .actions.patches[]?.target')
+        done < <(recipe_json_lines "$file" '.actions.files[]?.target')
 
         while IFS= read -r config; do
             [ -n "$config" ] || continue
@@ -1066,6 +1066,57 @@ recipe_apply_copy_actions() {
     done < <(recipe_json_lines "$file" "$expr")
 }
 
+recipe_apply_patch_actions() {
+    local name="$1"
+    local file="$2"
+    local entry
+    local source_rel
+    local target_rel
+    local strip
+    local binary
+    local ignore_whitespace
+    local forward
+    local backup
+    local reject_file
+    local fuzz
+    local patch_path
+    local target_dir
+    local patch_args
+
+    while IFS= read -r entry; do
+        [ -n "$entry" ] || continue
+
+        source_rel=$(recipe_json_object_get "$entry" '.source')
+        target_rel=$(recipe_json_object_get "$entry" '.target')
+        strip=$(recipe_json_object_get_optional "$entry" '.strip // 1')
+        binary=$(recipe_json_object_get_optional "$entry" '.binary // false')
+        ignore_whitespace=$(recipe_json_object_get_optional "$entry" '.ignoreWhitespace // false')
+        forward=$(recipe_json_object_get_optional "$entry" '.forward // true')
+        backup=$(recipe_json_object_get_optional "$entry" '.backup // false')
+        reject_file=$(recipe_json_object_get_optional "$entry" '.rejectFile // false')
+        fuzz=$(recipe_json_object_get_optional "$entry" '.fuzz // 0')
+
+        patch_path="$(recipe_dir "$name")/$source_rel"
+        target_dir="$RECIPE_BUILD_DIR/$target_rel"
+
+        [ -f "$patch_path" ] || recipe_die "$name: patch not found: $source_rel" || return 1
+        [ -d "$target_dir" ] || recipe_die "$name: patch target directory not found: $target_rel" || return 1
+
+        patch_args=("-d" "$target_dir" "-p$strip")
+        [ "$forward" = "true" ] && patch_args+=("--forward")
+        [ "$binary" = "true" ] && patch_args+=("--binary")
+        [ "$ignore_whitespace" = "true" ] && patch_args+=("-l")
+        [ "$backup" != "true" ] && patch_args+=("--no-backup-if-mismatch")
+        [ "$reject_file" != "true" ] && patch_args+=("--reject-file=-")
+        [ "$fuzz" -gt 0 ] && patch_args+=("--fuzz=$fuzz")
+
+        if ! patch "${patch_args[@]}" < "$patch_path"; then
+            recipe_die "$name: failed to apply patch '$source_rel' in '$target_rel'"
+            return 1
+        fi
+    done < <(recipe_json_lines "$file" '.actions.patches[]? | @json')
+}
+
 recipe_apply_one() {
     local name="$1"
     local file
@@ -1088,7 +1139,7 @@ recipe_apply_one() {
     done < <(recipe_json_lines "$file" '.actions.importPackages[]? | @json')
     while IFS= read -r entry; do [ -n "$entry" ] && rm -rf "$RECIPE_BUILD_DIR/$entry"; done < <(recipe_json_lines "$file" '.actions.removePackageDirs[]?')
 
-    recipe_apply_copy_actions "$name" "$file" '.actions.patches[]? | @json'
+    recipe_apply_patch_actions "$name" "$file"
     recipe_apply_copy_actions "$name" "$file" '.actions.files[]? | @json'
 
     while IFS= read -r entry; do [ -n "$entry" ] && recipe_apply_config "$name" "$entry"; done < <(recipe_json_lines "$file" '.actions.configs[]?')
