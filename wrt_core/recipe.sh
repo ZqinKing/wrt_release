@@ -667,6 +667,38 @@ recipe_compute_target_enabled() {
     recipe_is_default_enabled "$name"
 }
 
+recipe_json_has_conflict() {
+    local name="$1"
+    local wanted="$2"
+    local file
+    local conflict
+
+    file=$(recipe_json_path "$name")
+    while IFS= read -r conflict; do
+        [ -n "$conflict" ] || continue
+        if [ "$conflict" = "$wanted" ]; then
+            return 0
+        fi
+    done < <(recipe_json_lines "$file" '.conflicts[]?')
+
+    return 1
+}
+
+recipe_enabled_conflicts_for() {
+    local name="$1"
+    local enabled_name
+    local matches=""
+
+    for enabled_name in "${RECIPE_PLAN[@]}"; do
+        [ "$enabled_name" = "$name" ] && continue
+        if recipe_json_has_conflict "$name" "$enabled_name" || recipe_json_has_conflict "$enabled_name" "$name"; then
+            matches=$(recipe_set_add "$matches" "$enabled_name")
+        fi
+    done
+
+    printf '%s\n' "$matches"
+}
+
 recipe_required_by_enabled() {
     local wanted="$1"
     local name
@@ -777,6 +809,8 @@ recipe_print_plan() {
     local name
     local file
     local phase
+    local conflicts
+    local conflict_text
 
     echo "Recipe plan for ${RECIPE_TARGET_NAME}:"
     if [ "${#RECIPE_PLAN[@]}" -eq 0 ]; then
@@ -786,7 +820,13 @@ recipe_print_plan() {
     for name in "${RECIPE_PLAN[@]}"; do
         file=$(recipe_json_path "$name")
         phase=$(recipe_json_get "$file" '.phase')
-        printf '  - [%s] %s\n' "$phase" "$name"
+        conflicts=$(recipe_enabled_conflicts_for "$name")
+        if [ -n "$conflicts" ]; then
+            conflict_text=$(recipe_join_names_display "$conflicts")
+            printf '  - [%s] %s [conflicts: %s]\n' "$phase" "$name" "$conflict_text"
+        else
+            printf '  - [%s] %s\n' "$phase" "$name"
+        fi
     done
 }
 

@@ -207,10 +207,12 @@ recipe_render_plan_cli() {
     local default_state
     local target_state
     local source_label
+    local conflicts
+    local notes
 
     echo
     echo "Recipe editor for ${RECIPE_TARGET_NAME}:"
-    printf '%-5s %-20s %-28s %-12s %-11s %s\n' 'Index' 'Phase' 'Recipe' 'Default' 'Target' 'Source'
+    printf '%-5s %-20s %-28s %-12s %-11s %-16s %s\n' 'Index' 'Phase' 'Recipe' 'Default' 'Target' 'Source' 'Notes'
 
     while IFS='|' read -r phase name; do
         [ -n "$name" ] || continue
@@ -226,11 +228,29 @@ recipe_render_plan_cli() {
         fi
 
         source_label=$(recipe_current_source_label "$name")
-        printf '%-5s %-20s %-28s %-12s %-11s %s\n' "$index" "$phase" "$name" "$default_state" "$target_state" "$source_label"
+        notes=''
+        conflicts=$(recipe_enabled_conflicts_for "$name")
+        if [ -n "$conflicts" ]; then
+            notes="conflicts: $(recipe_join_names_display "$conflicts")"
+        fi
+        printf '%-5s %-20s %-28s %-12s %-11s %-16s %s\n' "$index" "$phase" "$name" "$default_state" "$target_state" "$source_label" "$notes"
         index=$((index + 1))
     done < <(recipe_plan_cli_rows)
 
     echo
+}
+
+recipe_toggle_conflict_message() {
+    local name="$1"
+    local conflicts
+
+    conflicts=$(recipe_enabled_conflicts_for "$name")
+    if [ -z "$conflicts" ]; then
+        return 1
+    fi
+
+    echo "Cannot enable $name: conflicts with $(recipe_join_names_display "$conflicts")"
+    return 0
 }
 
 recipe_plan_cli_name_by_index() {
@@ -287,6 +307,12 @@ recipe_toggle_target_override() {
         fi
     fi
 
+    if [ "$new_target_enabled" -eq 1 ] && ! recipe_has_name "$name"; then
+        if recipe_toggle_conflict_message "$name"; then
+            return 2
+        fi
+    fi
+
     while IFS= read -r name_in_set; do
         [ -n "$name_in_set" ] || continue
         recipes_set=$(recipe_set_add "$recipes_set" "$name_in_set")
@@ -316,10 +342,17 @@ recipe_toggle_target_override() {
 
 recipe_toggle_default_enabled() {
     local name="$1"
+    local currently_enabled=0
 
     if recipe_is_default_enabled "$name"; then
         recipe_write_json_enabled "$name" false
     else
+        if recipe_has_name "$name"; then
+            currently_enabled=1
+        fi
+        if [ "$currently_enabled" -eq 0 ] && recipe_toggle_conflict_message "$name"; then
+            return 2
+        fi
         recipe_write_json_enabled "$name" true
     fi
     recipe_rebuild_plan
@@ -388,7 +421,16 @@ recipe_open_config_cli() {
                         exit "$status"
                     fi
                 else
+                    set +e
                     recipe_toggle_default_enabled "$name"
+                    status=$?
+                    set -e
+                    if [ "$status" -ne 0 ]; then
+                        if [ "$status" -eq 2 ]; then
+                            continue
+                        fi
+                        exit "$status"
+                    fi
                 fi
                 recipe_render_plan_cli
                 ;;
