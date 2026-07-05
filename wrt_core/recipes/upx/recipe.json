@@ -1,0 +1,30 @@
+{
+  "$schema": "../recipe.schema.json",
+  "name": "upx",
+  "description": "为需要 UPX 的包准备构建树内的 upx/upx 可执行文件",
+  "enabled": false,
+  "phase": "pre_defconfig",
+  "depends": [],
+  "conflicts": [],
+  "tags": [
+    "toolchain",
+    "build",
+    "upx"
+  ],
+  "when": {
+    "targets": [],
+    "repo": [],
+    "branch": [],
+    "tags": []
+  },
+  "actions": {
+    "addFeeds": [],
+    "removeFeeds": [],
+    "importPackages": [],
+    "removePackageDirs": [],
+    "patches": [],
+    "files": [],
+    "configs": [],
+    "script": "apply.sh"
+  }
+}
