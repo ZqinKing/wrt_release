@@ -1,0 +1,45 @@
+{
+  "$schema": "../recipe.schema.json",
+  "name": "luci_theme_fluent",
+  "description": "导入 Fluent LuCI 主题包，并提供独立的构建配置片段",
+  "enabled": false,
+  "phase": "pre_defconfig",
+  "depends": [],
+  "conflicts": [],
+  "tags": [
+    "theme",
+    "luci",
+    "fluent"
+  ],
+  "when": {
+    "targets": [],
+    "repo": [],
+    "branch": [],
+    "tags": []
+  },
+  "actions": {
+    "addFeeds": [],
+    "removeFeeds": [],
+    "importPackagesRegistry": {
+      "luci-theme-fluent": {
+        "gitUrl": "https://github.com/LazuliKao/luci-theme-fluent.git",
+        "branch": "main",
+        "sparseRoot": null
+      }
+    },
+    "importPackages": [
+      {
+        "source": "luci-theme-fluent",
+        "name": "luci-theme-fluent",
+        "target": "package/luci-theme-fluent"
+      }
+    ],
+    "removePackageDirs": [],
+    "patches": [],
+    "files": [],
+    "configs": [
+      "configs/luci_theme_fluent.config"
+    ],
+    "script": null
+  }
+}

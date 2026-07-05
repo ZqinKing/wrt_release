@@ -1,0 +1,41 @@
+{
+  "$schema": "../recipe.schema.json",
+  "name": "default_theme_fluent",
+  "description": "将 LuCI 默认主题切换为 Fluent，并同步替换默认主题依赖",
+  "enabled": false,
+  "phase": "post_feeds_update",
+  "depends": [
+    "luci_theme_fluent"
+  ],
+  "conflicts": [
+    "default_theme_argon"
+  ],
+  "tags": [
+    "theme",
+    "luci",
+    "fluent",
+    "default"
+  ],
+  "when": {
+    "targets": [],
+    "repo": [],
+    "branch": [],
+    "tags": []
+  },
+  "actions": {
+    "addFeeds": [],
+    "removeFeeds": [],
+    "importPackages": [],
+    "removePackageDirs": [],
+    "patches": [],
+    "files": [
+      {
+        "source": "files/etc/uci-defaults/990_set_fluent_default",
+        "target": "package/base-files/files/etc/uci-defaults/990_set_fluent_default",
+        "mode": "0544"
+      }
+    ],
+    "configs": [],
+    "script": "apply.sh"
+  }
+}

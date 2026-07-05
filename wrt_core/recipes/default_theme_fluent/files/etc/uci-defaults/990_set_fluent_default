@@ -1,0 +1,7 @@
+#!/bin/sh
+
+uci batch <<'EOF'
+set luci.main.mediaurlbase='/luci-static/fluent'
+set luci.themes.Fluent='/luci-static/fluent'
+commit luci
+EOF
