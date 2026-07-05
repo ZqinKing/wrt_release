@@ -1,0 +1,35 @@
+{
+  "$schema": "../recipe.schema.json",
+  "name": "default_theme_argon",
+  "description": "将 LuCI 默认主题依赖替换为 Argon",
+  "enabled": true,
+  "phase": "post_feeds_update",
+  "depends": [
+    "luci_theme_argon"
+  ],
+  "conflicts": [
+    "default_theme_fluent"
+  ],
+  "tags": [
+    "theme",
+    "luci",
+    "argon",
+    "default"
+  ],
+  "when": {
+    "targets": [],
+    "repo": [],
+    "branch": [],
+    "tags": []
+  },
+  "actions": {
+    "addFeeds": [],
+    "removeFeeds": [],
+    "importPackages": [],
+    "removePackageDirs": [],
+    "patches": [],
+    "files": [],
+    "configs": [],
+    "script": "apply.sh"
+  }
+}

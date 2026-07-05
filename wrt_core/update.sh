@@ -25,7 +25,6 @@ fi
 FEEDS_CONF="feeds.conf.default"
 GOLANG_REPO="https://github.com/sbwml/packages_lang_golang"
 GOLANG_BRANCH="26.x"
-THEME_SET="argon"
 LAN_ADDR="192.168.1.1"
 
 SCRIPT_DIR=$(cd $(dirname $0) && pwd)
@@ -126,7 +125,6 @@ stage_pre_install_source_fixes() {
     update_dockerman
     set_nginx_default_config
     update_uwsgi_limit_as
-    update_argon
     update_nginx_ubus_module
     check_default_settings
     install_opkg_distfeeds

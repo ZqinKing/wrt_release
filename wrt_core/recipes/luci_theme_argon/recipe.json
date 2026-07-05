@@ -1,0 +1,51 @@
+{
+  "$schema": "../recipe.schema.json",
+  "name": "luci_theme_argon",
+  "description": "导入自定义 Argon 主题包，并注入 Argon 专属首启配色初始化脚本",
+  "enabled": true,
+  "phase": "pre_defconfig",
+  "depends": [],
+  "conflicts": [],
+  "tags": [
+    "theme",
+    "luci",
+    "argon"
+  ],
+  "when": {
+    "targets": [],
+    "repo": [],
+    "branch": [],
+    "tags": []
+  },
+  "actions": {
+    "addFeeds": [],
+    "removeFeeds": [],
+    "importPackagesRegistry": {
+      "luci-theme-argon-custom": {
+        "gitUrl": "https://github.com/ZqinKing/luci-theme-argon.git",
+        "branch": "master",
+        "sparseRoot": null
+      }
+    },
+    "importPackages": [
+      {
+        "source": "luci-theme-argon-custom",
+        "name": "luci-theme-argon",
+        "target": "package/luci-theme-argon"
+      }
+    ],
+    "removePackageDirs": [],
+    "patches": [],
+    "files": [
+      {
+        "source": "files/etc/uci-defaults/990_set_argon_primary",
+        "target": "package/base-files/files/etc/uci-defaults/990_set_argon_primary",
+        "mode": "0544"
+      }
+    ],
+    "configs": [
+      "configs/luci_theme_argon.config"
+    ],
+    "script": null
+  }
+}

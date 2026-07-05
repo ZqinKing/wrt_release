@@ -145,7 +145,7 @@ KERNEL_MODULES=
       { "source": "patches/999-example.patch", "target": "feeds/packages/net/miniupnpd/patches/999-example.patch" }
     ],
     "files": [
-      { "source": "files/990_set_argon_primary", "target": "package/base-files/files/etc/uci-defaults/990_set_argon_primary" }
+      { "source": "files/etc/uci-defaults/990_set_argon_primary", "target": "package/base-files/files/etc/uci-defaults/990_set_argon_primary" }
     ],
     "configs": ["configs/example.config"],
     "script": "apply.sh"
@@ -375,7 +375,9 @@ wrt_core/recipes/example_argon_base/
   recipe.json
   apply.sh
   files/
-    990_set_argon_primary
+    etc/
+      uci-defaults/
+        990_set_argon_primary
   patches/
     999-example.patch
   configs/
