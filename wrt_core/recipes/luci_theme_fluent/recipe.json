@@ -30,7 +30,7 @@
     "importPackages": [
       {
         "source": "luci-theme-fluent",
-        "name": "luci-theme-fluent",
+        "name": ".",
         "target": "package/luci-theme-fluent"
       }
     ],

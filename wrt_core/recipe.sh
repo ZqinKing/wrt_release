@@ -947,6 +947,8 @@ recipe_apply_import_package() {
     local source_dir
     local target_rel
     local target_dir
+    local repo_root_package=0
+    local package_name
 
     [ -n "$source_label" ] || recipe_die "importPackages entry missing source"
     [ -n "$import_name" ] || recipe_die "importPackages entry missing name"
@@ -955,7 +957,13 @@ recipe_apply_import_package() {
     repo_branch=$(recipe_registry_get_optional "$source_label" '.branch // empty')
     sparse_root=$(recipe_registry_get_optional "$source_label" '.sparseRoot // empty')
 
-    if [ -n "$sparse_root" ]; then
+    if [ "$import_name" = "." ]; then
+        repo_root_package=1
+    fi
+
+    if [ "$repo_root_package" -eq 1 ]; then
+        source_dir='.'
+    elif [ -n "$sparse_root" ]; then
         source_dir="$sparse_root/$import_name"
     else
         source_dir="$import_name"
@@ -968,6 +976,31 @@ recipe_apply_import_package() {
     fi
     target_dir="$RECIPE_BUILD_DIR/$target_rel"
     mkdir -p "$(dirname "$target_dir")"
+
+    if [ "$repo_root_package" -eq 1 ]; then
+        package_name=$(basename "$target_rel")
+        [ -n "$package_name" ] || recipe_die "$source_label root package import requires a target path"
+
+        if declare -F sync_repo_root_package_to_feed_dir >/dev/null 2>&1; then
+            sync_repo_root_package_to_feed_dir "$repo_url" "$repo_branch" "$(dirname "$target_dir")" "$source_label" "$package_name" || return 1
+        else
+            local tmp_dir
+            local clone_args=(clone --depth 1 --filter=blob:none)
+            tmp_dir=$(mktemp -d)
+            if [ -n "$repo_branch" ]; then
+                clone_args+=(-b "$repo_branch")
+            fi
+            clone_args+=("$repo_url" "$tmp_dir")
+            git "${clone_args[@]}"
+            [ -f "$tmp_dir/Makefile" ] || recipe_die "$source_label root package repository lacks Makefile"
+            rm -rf "$tmp_dir/.git"
+            rm -rf "$target_dir"
+            mv "$tmp_dir" "$target_dir"
+        fi
+
+        echo "recipe: imported $source_label:. to $target_rel"
+        return 0
+    fi
 
     if declare -F sync_sparse_packages_to_feed_dir >/dev/null 2>&1; then
         local tmp_target
