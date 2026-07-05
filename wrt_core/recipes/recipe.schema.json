@@ -85,6 +85,22 @@
           "items": { "type": "string" },
           "uniqueItems": true
         },
+        "importPackagesRegistry": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[a-z0-9][a-z0-9._-]*$"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["gitUrl"],
+            "properties": {
+              "gitUrl": { "type": "string" },
+              "branch": { "type": ["string", "null"] },
+              "sparseRoot": { "type": ["string", "null"] }
+            }
+          }
+        },
         "importPackages": {
           "type": "array",
           "items": {

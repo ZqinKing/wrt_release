@@ -130,8 +130,15 @@ KERNEL_MODULES=
   "actions": {
     "addFeeds": ["src-git luci_app_bandix https://github.com/timsaya/luci-app-bandix.git;main"],
     "removeFeeds": ["packages_ext", "small8"],
+    "importPackagesRegistry": {
+      "example-private-source": {
+        "gitUrl": "https://github.com/example/openwrt-extra.git",
+        "branch": "main",
+        "sparseRoot": null
+      }
+    },
     "importPackages": [
-      { "source": "kenzok8-small-package", "name": "luci-app-netdata" }
+      { "source": "example-private-source", "name": "luci-app-netdata" }
     ],
     "removePackageDirs": ["feeds/luci/applications/luci-app-dockerman"],
     "patches": [
@@ -164,7 +171,8 @@ KERNEL_MODULES=
 
 - `actions.addFeeds`：追加到 `feeds.conf(.default)` 的 feed 条目
 - `actions.removeFeeds`：移除的 feed 标识
-- `actions.importPackages`：从 registry 导入外部包；每项包含 `source`、`name`，可选 `target`
+- `actions.importPackagesRegistry`：当前 recipe 独立追加的 IMPORT_PACKAGES 来源映射；键名与全局 registry 共用同一命名规则
+- `actions.importPackages`：从合并后的 registry 导入外部包；每项包含 `source`、`name`，可选 `target`
 - `actions.removePackageDirs`：删除构建树中的包目录
 - `actions.patches`：复制补丁文件；每项包含 `source`、`target`，可选 `mode`
 - `actions.files`：复制普通文件；每项包含 `source`、`target`，可选 `mode`
@@ -280,19 +288,23 @@ KERNEL_MODULES=
 
 ## IMPORT_PACKAGES registry 设计约束
 
-`actions.importPackages[].source` 不直接等于 Git URL，而是交给独立 registry 映射。
+`actions.importPackages[].source` 不直接等于 Git URL，而是交给 registry 映射。registry 由全局文件与 recipe 内联声明两部分合并得到。
 
-当前文件：`wrt_core/recipes/import_registry.json`
+全局文件：`wrt_core/recipes/import_registry.json`
 
-格式由 `wrt_core/recipes/schemas/import-registry.schema.json` 约束：
+recipe 内联位置：`actions.importPackagesRegistry`
+
+格式与全局 registry 的单个 `sources` value 保持一致：
 
 ```json
 {
-  "sources": {
-    "awg-openwrt": {
-      "gitUrl": "https://github.com/Slava-Shchipunov/awg-openwrt.git",
-      "branch": "master",
-      "sparseRoot": null
+  "actions": {
+    "importPackagesRegistry": {
+      "awg-openwrt": {
+        "gitUrl": "https://github.com/Slava-Shchipunov/awg-openwrt.git",
+        "branch": "master",
+        "sparseRoot": null
+      }
     }
   }
 }
@@ -300,9 +312,11 @@ KERNEL_MODULES=
 
 设计约束：
 
-- recipe 只声明逻辑来源标识，不内嵌 Git URL
-- registry 统一维护 `source -> Git URL / 默认分支 / 可选 sparseRoot` 映射
-- runner 解析 `actions.importPackages` 时，必须先查 registry；未命中直接报错
+- recipe 只声明逻辑来源标识，不内嵌到 `importPackages` 项里
+- 全局 registry 继续维护共享来源；recipe 可为自身补充独立来源
+- runner 先合并全局 registry 与所有启用 recipe 的 `actions.importPackagesRegistry`
+- 同名 source 允许重复声明仅当内容完全一致；不同内容直接报错
+- runner 解析 `actions.importPackages` 时，必须先查合并后的 registry；未命中直接报错
 - 导入目标默认是 `package/<name>`；显式 `target` 可覆盖
 - 稀疏检出路径默认是 `<name>`；若 registry 设置 `sparseRoot`，则为 `<sparseRoot>/<name>`
 

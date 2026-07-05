@@ -20,6 +20,13 @@
   "actions": {
     "addFeeds": [],
     "removeFeeds": [],
+    "importPackagesRegistry": {
+      "awg-openwrt": {
+        "gitUrl": "https://github.com/Slava-Shchipunov/awg-openwrt.git",
+        "branch": "master",
+        "sparseRoot": null
+      }
+    },
     "importPackages": [
       {
         "source": "awg-openwrt",

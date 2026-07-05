@@ -140,6 +140,7 @@ recipe_validate_structure() {
         (.actions | type == "object") and
         (.actions.addFeeds | type == "array") and
         (.actions.removeFeeds | type == "array") and
+        ((.actions.importPackagesRegistry == null) or (.actions.importPackagesRegistry | type == "object")) and
         (.actions.importPackages | type == "array") and
         (.actions.removePackageDirs | type == "array") and
         (.actions.patches | type == "array") and
@@ -155,6 +156,7 @@ recipe_validate_structure() {
         all(.when.tags[]?; type == "string") and
         all(.actions.addFeeds[]?; type == "string") and
         all(.actions.removeFeeds[]?; type == "string") and
+        all(.actions.importPackagesRegistry[]?; (.gitUrl | type == "string" and length > 0) and ((has("branch") | not) or (.branch == null) or (.branch | type == "string")) and ((has("sparseRoot") | not) or (.sparseRoot == null) or (.sparseRoot | type == "string"))) and
         all(.actions.importPackages[]?; type == "object" and (.source | type == "string" and length > 0) and (.name | type == "string" and length > 0) and ((has("target") | not) or (.target | type == "string" and length > 0))) and
         all(.actions.removePackageDirs[]?; type == "string") and
         all(.actions.patches[]?; type == "object" and (.source | type == "string" and length > 0) and (.target | type == "string" and length > 0) and ((has("mode") | not) or (.mode | type == "string" and test("^[0-7]{3,4}$")))) and
@@ -163,7 +165,7 @@ recipe_validate_structure() {
     ' "$file" >/dev/null || recipe_die "invalid recipe.json structure: $file"
 }
 
-recipe_validate_registry() {
+recipe_validate_global_registry() {
     local registry="$RECIPE_BASE_PATH/recipes/import_registry.json"
 
     [ -f "$registry" ] || recipe_die "IMPORT_PACKAGES registry not found: $registry"
@@ -683,10 +685,8 @@ recipe_required_by_enabled() {
 }
 
 
-source "$(dirname "${BASH_SOURCE[0]}")/modules/recipe_edit.sh"
-
 recipe_build_plan() {
-    recipe_validate_registry
+    recipe_validate_global_registry
     recipe_scan_initial_plan
     recipe_resolve_depends
     recipe_filter_conditions
@@ -696,7 +696,53 @@ recipe_build_plan() {
     recipe_validate_conflicts
     recipe_validate_action_paths
     recipe_validate_paths
+    recipe_build_import_registry
+    recipe_validate_import_package_sources
     recipe_sort_plan
+}
+
+recipe_build_import_registry() {
+    local registry="$RECIPE_BASE_PATH/recipes/import_registry.json"
+    local merged="$RECIPE_BUILD_DIR/.recipe_import_registry.json"
+    local name
+    local file
+
+    cp "$registry" "$merged"
+
+    for name in "${RECIPE_PLAN[@]}"; do
+        file=$(recipe_json_path "$name")
+        jq -e --arg recipe_name "$name" '
+            . as $recipe
+            | ($recipe.actions.importPackagesRegistry // {}) as $local
+            | reduce ($local | keys_unsorted[]) as $key (
+                input;
+                if .sources[$key] == null then
+                    .sources[$key] = $local[$key]
+                elif .sources[$key] == $local[$key] then
+                    .
+                else
+                    error("recipe \($recipe_name) redefines importPackagesRegistry source \($key) with different content")
+                end
+            )
+        ' "$file" "$merged" > "$merged.tmp" || recipe_die "failed to merge importPackagesRegistry for recipe '$name'"
+        mv "$merged.tmp" "$merged"
+    done
+
+    RECIPE_IMPORT_REGISTRY="$merged"
+}
+
+recipe_validate_import_package_sources() {
+    local name
+    local file
+    local source_label
+
+    for name in "${RECIPE_PLAN[@]}"; do
+        file=$(recipe_json_path "$name")
+        while IFS= read -r source_label; do
+            [ -n "$source_label" ] || continue
+            jq -e --arg source_key "$source_label" '.sources[$source_key] != null' "$RECIPE_IMPORT_REGISTRY" >/dev/null || recipe_die "recipe '$name' references unknown importPackages source '$source_label'"
+        done < <(recipe_json_lines "$file" '.actions.importPackages[]?.source')
+    done
 }
 
 recipe_init() {
@@ -836,17 +882,15 @@ recipe_apply_remove_feed() {
 recipe_registry_get() {
     local source_key="$1"
     local expr="$2"
-    local registry="$RECIPE_BASE_PATH/recipes/import_registry.json"
 
-    jq -er --arg source_key "$source_key" ".sources[\$source_key] | $expr" "$registry"
+    jq -er --arg source_key "$source_key" ".sources[\$source_key] | $expr" "$RECIPE_IMPORT_REGISTRY"
 }
 
 recipe_registry_get_optional() {
     local source_key="$1"
     local expr="$2"
-    local registry="$RECIPE_BASE_PATH/recipes/import_registry.json"
 
-    jq -er --arg source_key "$source_key" ".sources[\$source_key] | $expr" "$registry" 2>/dev/null || true
+    jq -er --arg source_key "$source_key" ".sources[\$source_key] | $expr" "$RECIPE_IMPORT_REGISTRY" 2>/dev/null || true
 }
 
 recipe_apply_import_package() {
