@@ -45,9 +45,9 @@ recipe_cli_default_state_text() {
     local name="$1"
 
     if recipe_is_default_enabled "$name"; then
-        recipe_cli_style "$RECIPE_CLI_CYAN" 'default=on'
+        recipe_cli_style "$RECIPE_CLI_CYAN" 'on'
     else
-        recipe_cli_style "$RECIPE_CLI_DIM" 'default=off'
+        recipe_cli_style "$RECIPE_CLI_DIM" 'off'
     fi
 }
 
@@ -55,9 +55,9 @@ recipe_cli_target_state_text() {
     local name="$1"
 
     if recipe_has_name "$name"; then
-        recipe_cli_style "$RECIPE_CLI_GREEN" 'target=on'
+        recipe_cli_style "$RECIPE_CLI_GREEN" 'on'
     else
-        recipe_cli_style "$RECIPE_CLI_DIM" 'target=off'
+        recipe_cli_style "$RECIPE_CLI_DIM" 'off'
     fi
 }
 
@@ -89,6 +89,30 @@ recipe_cli_notes_text() {
     fi
 
     recipe_cli_style "$RECIPE_CLI_RED" "conflicts: $(recipe_join_names_display "$conflicts")"
+}
+
+recipe_cli_enabled_conflicts_text() {
+    local name="$1"
+    local other_name
+    local matches=""
+
+    if ! recipe_compute_target_enabled "$name"; then
+        printf '%s' ''
+        return 0
+    fi
+
+    while IFS= read -r other_name; do
+        [ -n "$other_name" ] || continue
+        [ "$other_name" = "$name" ] && continue
+        if ! recipe_compute_target_enabled "$other_name"; then
+            continue
+        fi
+        if recipe_json_has_conflict "$name" "$other_name" || recipe_json_has_conflict "$other_name" "$name"; then
+            matches=$(recipe_set_add "$matches" "$other_name")
+        fi
+    done < <(recipe_list_all_names)
+
+    recipe_cli_notes_text "$matches"
 }
 
 recipe_sort_unique_lines() {
@@ -297,39 +321,48 @@ recipe_render_plan_cli() {
     local name
     local default_state
     local target_state
+    local final_state
     local default_state_raw
     local target_state_raw
+    local final_state_raw
     local source_label
     local source_label_raw
-    local conflicts
     local notes
 
     echo
     printf '%s\n' "$(recipe_cli_style "$RECIPE_CLI_BOLD$RECIPE_CLI_MAGENTA" "Recipe editor for ${RECIPE_TARGET_NAME}:")"
-    printf '%s %s %s %s %s %s %s\n' \
+    printf '%s %s %s %s %s %s %s %s\n' \
         "$(recipe_cli_pad_style 5 "$RECIPE_CLI_BOLD" 'Index')" \
         "$(recipe_cli_pad_style 20 "$RECIPE_CLI_BOLD" 'Phase')" \
         "$(recipe_cli_pad_style 28 "$RECIPE_CLI_BOLD" 'Recipe')" \
-        "$(recipe_cli_pad_style 12 "$RECIPE_CLI_BOLD" 'Default')" \
-        "$(recipe_cli_pad_style 11 "$RECIPE_CLI_BOLD" 'Target')" \
+        "$(recipe_cli_pad_style 8 "$RECIPE_CLI_BOLD" 'Default')" \
+        "$(recipe_cli_pad_style 8 "$RECIPE_CLI_BOLD" 'Target')" \
+        "$(recipe_cli_pad_style 8 "$RECIPE_CLI_BOLD" 'Final')" \
         "$(recipe_cli_pad_style 16 "$RECIPE_CLI_BOLD" 'Source')" \
         "$(recipe_cli_style "$RECIPE_CLI_BOLD" 'Notes')"
 
     while IFS='|' read -r phase name; do
         [ -n "$name" ] || continue
         if recipe_is_default_enabled "$name"; then
-            default_state_raw='default=on'
-            default_state=$(recipe_cli_pad_style 12 "$RECIPE_CLI_CYAN" "$default_state_raw")
+            default_state_raw='on'
+            default_state=$(recipe_cli_pad_style 8 "$RECIPE_CLI_CYAN" "$default_state_raw")
         else
-            default_state_raw='default=off'
-            default_state=$(recipe_cli_pad_style 12 "$RECIPE_CLI_DIM" "$default_state_raw")
+            default_state_raw='off'
+            default_state=$(recipe_cli_pad_style 8 "$RECIPE_CLI_DIM" "$default_state_raw")
         fi
         if recipe_has_name "$name"; then
-            target_state_raw='target=on'
-            target_state=$(recipe_cli_pad_style 11 "$RECIPE_CLI_GREEN" "$target_state_raw")
+            target_state_raw='on'
+            target_state=$(recipe_cli_pad_style 8 "$RECIPE_CLI_GREEN" "$target_state_raw")
         else
-            target_state_raw='target=off'
-            target_state=$(recipe_cli_pad_style 11 "$RECIPE_CLI_DIM" "$target_state_raw")
+            target_state_raw='off'
+            target_state=$(recipe_cli_pad_style 8 "$RECIPE_CLI_DIM" "$target_state_raw")
+        fi
+        if recipe_compute_target_enabled "$name"; then
+            final_state_raw='on'
+            final_state=$(recipe_cli_pad_style 8 "$RECIPE_CLI_GREEN" "$final_state_raw")
+        else
+            final_state_raw='off'
+            final_state=$(recipe_cli_pad_style 8 "$RECIPE_CLI_DIM" "$final_state_raw")
         fi
 
         source_label_raw=$(recipe_current_source_label "$name")
@@ -347,15 +380,14 @@ recipe_render_plan_cli() {
                 source_label=$(recipe_cli_pad_style 16 "$RECIPE_CLI_DIM" "$source_label_raw")
                 ;;
         esac
-        notes=''
-        conflicts=$(recipe_enabled_conflicts_for "$name")
-        notes=$(recipe_cli_notes_text "$conflicts")
-        printf '%-5s %-20s %-28s %s %s %s %s\n' \
+        notes=$(recipe_cli_enabled_conflicts_text "$name")
+        printf '%-5s %-20s %-28s %s %s %s %s %s\n' \
             "$index" \
             "$phase" \
             "$name" \
             "$default_state" \
             "$target_state" \
+            "$final_state" \
             "$source_label" \
             "$notes"
         index=$((index + 1))
