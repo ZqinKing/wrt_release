@@ -37,12 +37,12 @@
     "importPackages": [
       {
         "source": "openwrt-tailscale-awg",
-        "name": "package/tailscale",
+        "path": "package/tailscale",
         "target": "package/tailscale"
       },
       {
         "source": "luci-app-tailscale-community",
-        "name": "luci-app-tailscale-community",
+        "path": "luci-app-tailscale-community",
         "target": "package/luci-app-tailscale-community"
       }
     ],

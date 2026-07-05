@@ -30,7 +30,7 @@
     "importPackages": [
       {
         "source": "luci-theme-argon-custom",
-        "name": ".",
+        "path": ".",
         "target": "package/luci-theme-argon"
       }
     ],

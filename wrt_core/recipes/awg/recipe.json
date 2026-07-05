@@ -30,15 +30,15 @@
     "importPackages": [
       {
         "source": "awg-openwrt",
-        "name": "kmod-amneziawg"
+        "path": "kmod-amneziawg"
       },
       {
         "source": "awg-openwrt",
-        "name": "amneziawg-tools"
+        "path": "amneziawg-tools"
       },
       {
         "source": "awg-openwrt",
-        "name": "luci-proto-amneziawg"
+        "path": "luci-proto-amneziawg"
       }
     ],
     "removePackageDirs": [],

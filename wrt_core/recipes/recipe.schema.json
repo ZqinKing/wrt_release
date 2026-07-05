@@ -106,10 +106,10 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["source", "name"],
+            "required": ["source", "path"],
             "properties": {
               "source": { "type": "string" },
-              "name": { "type": "string" },
+              "path": { "type": "string" },
               "target": { "type": "string" }
             }
           }

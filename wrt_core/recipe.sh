@@ -158,7 +158,7 @@ recipe_validate_structure() {
         all(.actions.addFeeds[]?; type == "string") and
         all(.actions.removeFeeds[]?; type == "string") and
         all(.actions.importPackagesRegistry[]?; (.gitUrl | type == "string" and length > 0) and ((has("branch") | not) or (.branch == null) or (.branch | type == "string")) and ((has("sparseRoot") | not) or (.sparseRoot == null) or (.sparseRoot | type == "string"))) and
-        all(.actions.importPackages[]?; type == "object" and (.source | type == "string" and length > 0) and (.name | type == "string" and length > 0) and ((has("target") | not) or (.target | type == "string" and length > 0))) and
+        all(.actions.importPackages[]?; type == "object" and (.source | type == "string" and length > 0) and (.path | type == "string" and length > 0) and ((has("target") | not) or (.target | type == "string" and length > 0))) and
         all(.actions.removePackageDirs[]?; type == "string") and
         all(.actions.patches[]?; type == "object" and (.source | type == "string" and length > 0) and (.target | type == "string" and length > 0) and ((has("mode") | not) or (.mode | type == "string" and test("^[0-7]{3,4}$")))) and
         all(.actions.files[]?; type == "object" and (.source | type == "string" and length > 0) and (.target | type == "string" and length > 0) and ((has("mode") | not) or (.mode | type == "string" and test("^[0-7]{3,4}$")))) and
@@ -939,7 +939,7 @@ recipe_registry_get_optional() {
 
 recipe_apply_import_package() {
     local source_label="$1"
-    local import_name="$2"
+    local import_path="$2"
     local import_target="$3"
     local repo_url
     local repo_branch
@@ -951,28 +951,28 @@ recipe_apply_import_package() {
     local package_name
 
     [ -n "$source_label" ] || recipe_die "importPackages entry missing source"
-    [ -n "$import_name" ] || recipe_die "importPackages entry missing name"
+    [ -n "$import_path" ] || recipe_die "importPackages entry missing path"
 
     repo_url=$(recipe_registry_get "$source_label" '.gitUrl') || recipe_die "IMPORT_PACKAGES registry missing entry: $source_label"
     repo_branch=$(recipe_registry_get_optional "$source_label" '.branch // empty')
     sparse_root=$(recipe_registry_get_optional "$source_label" '.sparseRoot // empty')
 
-    if [ "$import_name" = "." ]; then
+    if [ "$import_path" = "." ]; then
         repo_root_package=1
     fi
 
     if [ "$repo_root_package" -eq 1 ]; then
         source_dir='.'
     elif [ -n "$sparse_root" ]; then
-        source_dir="$sparse_root/$import_name"
+        source_dir="$sparse_root/$import_path"
     else
-        source_dir="$import_name"
+        source_dir="$import_path"
     fi
 
     if [ -n "$import_target" ]; then
         target_rel="$import_target"
     else
-        target_rel="package/$import_name"
+        target_rel="package/$import_path"
     fi
     target_dir="$RECIPE_BUILD_DIR/$target_rel"
     mkdir -p "$(dirname "$target_dir")"
@@ -1028,7 +1028,7 @@ recipe_apply_import_package() {
         mv "$tmp_dir/$source_dir" "$target_dir"
         rm -rf "$tmp_dir"
     fi
-    echo "recipe: imported $source_label:$import_name to $target_rel"
+    echo "recipe: imported $source_label:$import_path to $target_rel"
 }
 
 recipe_run_script() {
@@ -1071,7 +1071,7 @@ recipe_apply_one() {
     local file
     local entry
     local source_label
-    local import_name
+    local import_path
     local import_target
     local script
 
@@ -1082,9 +1082,9 @@ recipe_apply_one() {
     while IFS= read -r entry; do
         [ -n "$entry" ] || continue
         source_label=$(recipe_json_object_get "$entry" '.source')
-        import_name=$(recipe_json_object_get "$entry" '.name')
+        import_path=$(recipe_json_object_get "$entry" '.path')
         import_target=$(recipe_json_object_get_optional "$entry" '.target // empty')
-        recipe_apply_import_package "$source_label" "$import_name" "$import_target"
+        recipe_apply_import_package "$source_label" "$import_path" "$import_target"
     done < <(recipe_json_lines "$file" '.actions.importPackages[]? | @json')
     while IFS= read -r entry; do [ -n "$entry" ] && rm -rf "$RECIPE_BUILD_DIR/$entry"; done < <(recipe_json_lines "$file" '.actions.removePackageDirs[]?')
 
