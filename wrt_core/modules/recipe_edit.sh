@@ -1,5 +1,96 @@
 #!/usr/bin/env bash
 
+recipe_cli_colors_init() {
+    if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
+        RECIPE_CLI_RESET=$'\033[0m'
+        RECIPE_CLI_BOLD=$'\033[1m'
+        RECIPE_CLI_DIM=$'\033[2m'
+        RECIPE_CLI_RED=$'\033[31m'
+        RECIPE_CLI_GREEN=$'\033[32m'
+        RECIPE_CLI_YELLOW=$'\033[33m'
+        RECIPE_CLI_BLUE=$'\033[34m'
+        RECIPE_CLI_MAGENTA=$'\033[35m'
+        RECIPE_CLI_CYAN=$'\033[36m'
+    else
+        RECIPE_CLI_RESET=''
+        RECIPE_CLI_BOLD=''
+        RECIPE_CLI_DIM=''
+        RECIPE_CLI_RED=''
+        RECIPE_CLI_GREEN=''
+        RECIPE_CLI_YELLOW=''
+        RECIPE_CLI_BLUE=''
+        RECIPE_CLI_MAGENTA=''
+        RECIPE_CLI_CYAN=''
+    fi
+}
+
+recipe_cli_style() {
+    local style="$1"
+    local text="$2"
+
+    printf '%s%s%s' "$style" "$text" "$RECIPE_CLI_RESET"
+}
+
+recipe_cli_pad_style() {
+    local width="$1"
+    local style="$2"
+    local text="$3"
+    local padded
+
+    printf -v padded "%-${width}s" "$text"
+    recipe_cli_style "$style" "$padded"
+}
+
+recipe_cli_default_state_text() {
+    local name="$1"
+
+    if recipe_is_default_enabled "$name"; then
+        recipe_cli_style "$RECIPE_CLI_CYAN" 'default=on'
+    else
+        recipe_cli_style "$RECIPE_CLI_DIM" 'default=off'
+    fi
+}
+
+recipe_cli_target_state_text() {
+    local name="$1"
+
+    if recipe_has_name "$name"; then
+        recipe_cli_style "$RECIPE_CLI_GREEN" 'target=on'
+    else
+        recipe_cli_style "$RECIPE_CLI_DIM" 'target=off'
+    fi
+}
+
+recipe_cli_source_label_text() {
+    local label="$1"
+
+    case "$label" in
+        RECIPES)
+            recipe_cli_style "$RECIPE_CLI_GREEN" "$label"
+            ;;
+        DISABLE_RECIPES)
+            recipe_cli_style "$RECIPE_CLI_YELLOW" "$label"
+            ;;
+        dependency)
+            recipe_cli_style "$RECIPE_CLI_BLUE" "$label"
+            ;;
+        *)
+            recipe_cli_style "$RECIPE_CLI_DIM" "$label"
+            ;;
+    esac
+}
+
+recipe_cli_notes_text() {
+    local conflicts="$1"
+
+    if [ -z "$conflicts" ]; then
+        printf '%s' ''
+        return 0
+    fi
+
+    recipe_cli_style "$RECIPE_CLI_RED" "conflicts: $(recipe_join_names_display "$conflicts")"
+}
+
 recipe_sort_unique_lines() {
     local content="$1"
 
@@ -172,12 +263,12 @@ recipe_current_source_label() {
 }
 
 recipe_print_plan_cli_help() {
-    echo 'Commands:'
-    echo '  t <index>  Toggle recipe for current target'
-    echo '  d <index>  Toggle recipe default enabled'
-    echo '  p          Print resolved execution plan'
-    echo '  h          Show this help'
-    echo '  q          Quit'
+    printf '%s\n' "$(recipe_cli_style "$RECIPE_CLI_BOLD" 'Commands:')"
+    printf '  %s  %s\n' "$(recipe_cli_style "$RECIPE_CLI_CYAN" 't <index>')" 'Toggle recipe for current target'
+    printf '  %s  %s\n' "$(recipe_cli_style "$RECIPE_CLI_CYAN" 'd <index>')" 'Toggle recipe default enabled'
+    printf '  %s  %s\n' "$(recipe_cli_style "$RECIPE_CLI_CYAN" 'p')" 'Print resolved execution plan'
+    printf '  %s  %s\n' "$(recipe_cli_style "$RECIPE_CLI_CYAN" 'h')" 'Show this help'
+    printf '  %s  %s\n' "$(recipe_cli_style "$RECIPE_CLI_CYAN" 'q')" 'Quit'
 }
 
 recipe_plan_cli_rows() {
@@ -206,34 +297,67 @@ recipe_render_plan_cli() {
     local name
     local default_state
     local target_state
+    local default_state_raw
+    local target_state_raw
     local source_label
+    local source_label_raw
     local conflicts
     local notes
 
     echo
-    echo "Recipe editor for ${RECIPE_TARGET_NAME}:"
-    printf '%-5s %-20s %-28s %-12s %-11s %-16s %s\n' 'Index' 'Phase' 'Recipe' 'Default' 'Target' 'Source' 'Notes'
+    printf '%s\n' "$(recipe_cli_style "$RECIPE_CLI_BOLD$RECIPE_CLI_MAGENTA" "Recipe editor for ${RECIPE_TARGET_NAME}:")"
+    printf '%s %s %s %s %s %s %s\n' \
+        "$(recipe_cli_pad_style 5 "$RECIPE_CLI_BOLD" 'Index')" \
+        "$(recipe_cli_pad_style 20 "$RECIPE_CLI_BOLD" 'Phase')" \
+        "$(recipe_cli_pad_style 28 "$RECIPE_CLI_BOLD" 'Recipe')" \
+        "$(recipe_cli_pad_style 12 "$RECIPE_CLI_BOLD" 'Default')" \
+        "$(recipe_cli_pad_style 11 "$RECIPE_CLI_BOLD" 'Target')" \
+        "$(recipe_cli_pad_style 16 "$RECIPE_CLI_BOLD" 'Source')" \
+        "$(recipe_cli_style "$RECIPE_CLI_BOLD" 'Notes')"
 
     while IFS='|' read -r phase name; do
         [ -n "$name" ] || continue
         if recipe_is_default_enabled "$name"; then
-            default_state='default=on'
+            default_state_raw='default=on'
+            default_state=$(recipe_cli_pad_style 12 "$RECIPE_CLI_CYAN" "$default_state_raw")
         else
-            default_state='default=off'
+            default_state_raw='default=off'
+            default_state=$(recipe_cli_pad_style 12 "$RECIPE_CLI_DIM" "$default_state_raw")
         fi
         if recipe_has_name "$name"; then
-            target_state='target=on'
+            target_state_raw='target=on'
+            target_state=$(recipe_cli_pad_style 11 "$RECIPE_CLI_GREEN" "$target_state_raw")
         else
-            target_state='target=off'
+            target_state_raw='target=off'
+            target_state=$(recipe_cli_pad_style 11 "$RECIPE_CLI_DIM" "$target_state_raw")
         fi
 
-        source_label=$(recipe_current_source_label "$name")
+        source_label_raw=$(recipe_current_source_label "$name")
+        case "$source_label_raw" in
+            RECIPES)
+                source_label=$(recipe_cli_pad_style 16 "$RECIPE_CLI_GREEN" "$source_label_raw")
+                ;;
+            DISABLE_RECIPES)
+                source_label=$(recipe_cli_pad_style 16 "$RECIPE_CLI_YELLOW" "$source_label_raw")
+                ;;
+            dependency)
+                source_label=$(recipe_cli_pad_style 16 "$RECIPE_CLI_BLUE" "$source_label_raw")
+                ;;
+            *)
+                source_label=$(recipe_cli_pad_style 16 "$RECIPE_CLI_DIM" "$source_label_raw")
+                ;;
+        esac
         notes=''
         conflicts=$(recipe_enabled_conflicts_for "$name")
-        if [ -n "$conflicts" ]; then
-            notes="conflicts: $(recipe_join_names_display "$conflicts")"
-        fi
-        printf '%-5s %-20s %-28s %-12s %-11s %-16s %s\n' "$index" "$phase" "$name" "$default_state" "$target_state" "$source_label" "$notes"
+        notes=$(recipe_cli_notes_text "$conflicts")
+        printf '%-5s %-20s %-28s %s %s %s %s\n' \
+            "$index" \
+            "$phase" \
+            "$name" \
+            "$default_state" \
+            "$target_state" \
+            "$source_label" \
+            "$notes"
         index=$((index + 1))
     done < <(recipe_plan_cli_rows)
 
@@ -249,7 +373,7 @@ recipe_toggle_conflict_message() {
         return 1
     fi
 
-    echo "Cannot enable $name: conflicts with $(recipe_join_names_display "$conflicts")"
+    printf '%s\n' "$(recipe_cli_style "$RECIPE_CLI_RED" "Cannot enable $name: conflicts with $(recipe_join_names_display "$conflicts")")"
     return 0
 }
 
@@ -365,11 +489,12 @@ recipe_open_config_cli() {
     local name
     local status
 
+    recipe_cli_colors_init
     recipe_render_plan_cli
     recipe_print_plan_cli_help
 
     while true; do
-        printf 'plan> '
+        printf '%s' "$(recipe_cli_style "$RECIPE_CLI_BOLD$RECIPE_CLI_CYAN" 'plan> ')"
         IFS= read -r line || break
         line=$(recipe_trim "$line")
         [ -n "$line" ] || continue
@@ -402,11 +527,11 @@ recipe_open_config_cli() {
                 ;;
             t|d)
                 if [[ ! "$index" =~ ^[0-9]+$ ]]; then
-                    echo "Invalid selection. Please enter a valid recipe index."
+                    printf '%s\n' "$(recipe_cli_style "$RECIPE_CLI_RED" 'Invalid selection. Please enter a valid recipe index.')"
                     continue
                 fi
                 name=$(recipe_plan_cli_name_by_index "$index") || {
-                    echo "Invalid selection. Please enter a valid recipe index."
+                    printf '%s\n' "$(recipe_cli_style "$RECIPE_CLI_RED" 'Invalid selection. Please enter a valid recipe index.')"
                     continue
                 }
                 if [ "$command" = 't' ]; then
@@ -435,7 +560,7 @@ recipe_open_config_cli() {
                 recipe_render_plan_cli
                 ;;
             *)
-                echo "Invalid command. Enter h for help."
+                printf '%s\n' "$(recipe_cli_style "$RECIPE_CLI_RED" 'Invalid command. Enter h for help.')"
                 ;;
         esac
     done
