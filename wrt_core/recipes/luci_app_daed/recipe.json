@@ -1,0 +1,48 @@
+{
+  "$schema": "../recipe.schema.json",
+  "name": "luci_app_daed",
+  "description": "导入 QiuSimons 的 daed 守护进程与 luci-app-daed 控制面板（kix 分支）",
+  "enabled": false,
+  "phase": "pre_defconfig",
+  "depends": [],
+  "conflicts": [],
+  "tags": [
+    "proxy",
+    "luci",
+    "daed"
+  ],
+  "when": {
+    "targets": [],
+    "repo": [],
+    "branch": [],
+    "tags": []
+  },
+  "actions": {
+    "addFeeds": [],
+    "removeFeeds": [],
+    "importPackagesRegistry": {
+      "luci-app-daed-kix": {
+        "gitUrl": "https://github.com/QiuSimons/luci-app-daed.git",
+        "branch": "kix",
+        "sparseRoot": null
+      }
+    },
+    "importPackages": [
+      {
+        "source": "luci-app-daed-kix",
+        "path": "daed"
+      },
+      {
+        "source": "luci-app-daed-kix",
+        "path": "luci-app-daed"
+      }
+    ],
+    "removePackageDirs": [],
+    "patches": [],
+    "files": [],
+    "configs": [
+      "configs/luci_app_daed.config"
+    ],
+    "script": null
+  }
+}
