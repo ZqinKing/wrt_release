@@ -23,18 +23,65 @@ RECIPE_BUILD_DIR=""
 RECIPE_TARGET_TAGS=""
 RECIPE_BASE_PATH=""
 RECIPE_ALLOW_CONFLICTS=0
+RECIPE_COLOR_RESET=""
+RECIPE_COLOR_BOLD=""
+RECIPE_COLOR_DIM=""
+RECIPE_COLOR_GREEN=""
+RECIPE_COLOR_YELLOW=""
+RECIPE_COLOR_BLUE=""
+RECIPE_COLOR_CYAN=""
 
 recipe_die() {
     echo "recipe: $*" >&2
     return 1
 }
 
+recipe_colors_init() {
+    if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
+        RECIPE_COLOR_RESET=$'\033[0m'
+        RECIPE_COLOR_BOLD=$'\033[1m'
+        RECIPE_COLOR_DIM=$'\033[2m'
+        RECIPE_COLOR_GREEN=$'\033[32m'
+        RECIPE_COLOR_YELLOW=$'\033[33m'
+        RECIPE_COLOR_BLUE=$'\033[34m'
+        RECIPE_COLOR_CYAN=$'\033[36m'
+    else
+        RECIPE_COLOR_RESET=""
+        RECIPE_COLOR_BOLD=""
+        RECIPE_COLOR_DIM=""
+        RECIPE_COLOR_GREEN=""
+        RECIPE_COLOR_YELLOW=""
+        RECIPE_COLOR_BLUE=""
+        RECIPE_COLOR_CYAN=""
+    fi
+}
+
+recipe_style() {
+    local style="$1"
+    local text="$2"
+
+    printf '%s%s%s' "$style" "$text" "$RECIPE_COLOR_RESET"
+}
+
 recipe_log_boundary() {
     local position="$1"
     local phase="$2"
     local name="$3"
+    local position_style="$RECIPE_COLOR_GREEN"
 
-    printf 'recipe: ===== %s recipe=%s phase=%s =====\n' "$position" "$name" "$phase"
+    if [ "$position" = "END" ]; then
+        position_style="$RECIPE_COLOR_YELLOW"
+    fi
+
+    printf '%s %s %s %s=%s %s=%s %s\n' \
+        "$(recipe_style "$RECIPE_COLOR_DIM" 'recipe:')" \
+        "$(recipe_style "$RECIPE_COLOR_DIM" '=====')" \
+        "$(recipe_style "$position_style$RECIPE_COLOR_BOLD" "$position")" \
+        "$(recipe_style "$RECIPE_COLOR_DIM" 'recipe')" \
+        "$(recipe_style "$RECIPE_COLOR_CYAN$RECIPE_COLOR_BOLD" "$name")" \
+        "$(recipe_style "$RECIPE_COLOR_DIM" 'phase')" \
+        "$(recipe_style "$RECIPE_COLOR_BLUE" "$phase")" \
+        "$(recipe_style "$RECIPE_COLOR_DIM" '=====')"
 }
 
 recipe_trim() {
@@ -781,6 +828,8 @@ recipe_validate_import_package_sources() {
 }
 
 recipe_init() {
+    recipe_colors_init
+
     RECIPE_TARGET_NAME="$1"
     RECIPE_TARGET_INI="$2"
     RECIPE_BUILD_DIR="$3"
