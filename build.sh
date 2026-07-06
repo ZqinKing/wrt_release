@@ -275,7 +275,13 @@ prepare_container_image() {
     cat > "$container_tmp_Dockerfile" <<EOF
 FROM $base_image
 USER root
-RUN apt-get update && apt-get install -y sudo git jq build-essential cmake g++ clang bison flex libelf-dev libncurses5-dev python3-distutils zlib1g-dev python3 pkg-config libssl-dev
+RUN apt-get update && apt-get install -y sudo git jq build-essential cmake g++ bison flex libelf-dev libncurses5-dev python3-distutils zlib1g-dev python3 pkg-config libssl-dev && \
+    ln -sf clang-18 /usr/bin/clang && \
+    ln -sf clang++-18 /usr/bin/clang++ && \
+    ln -sf llc-18 /usr/bin/llc && \
+    ln -sf llvm-dis-18 /usr/bin/llvm-dis && \
+    ln -sf opt-18 /usr/bin/opt && \
+    ln -sf llvm-strip-18 /usr/bin/llvm-strip
 USER $container_default_user
 RUN git config --global pull.rebase false
 RUN git config --global advice.detachedHead false
