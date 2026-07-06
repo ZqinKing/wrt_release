@@ -23,6 +23,7 @@ RECIPE_BUILD_DIR=""
 RECIPE_TARGET_TAGS=""
 RECIPE_BASE_PATH=""
 RECIPE_ALLOW_CONFLICTS=0
+RECIPE_GLOBAL_REGISTRY_DATA=""
 RECIPE_COLOR_RESET=""
 RECIPE_COLOR_BOLD=""
 RECIPE_COLOR_DIM=""
@@ -785,32 +786,7 @@ recipe_build_plan() {
 
 recipe_build_import_registry() {
     local registry="$RECIPE_BASE_PATH/recipes/import_registry.json"
-    local merged="$RECIPE_BUILD_DIR/.recipe_import_registry.json"
-    local name
-    local file
-
-    cp "$registry" "$merged"
-
-    for name in "${RECIPE_PLAN[@]}"; do
-        file=$(recipe_json_path "$name")
-        jq -e --arg recipe_name "$name" '
-            . as $recipe
-            | ($recipe.actions.importPackagesRegistry // {}) as $local
-            | reduce ($local | keys_unsorted[]) as $key (
-                input;
-                if .sources[$key] == null then
-                    .sources[$key] = $local[$key]
-                elif .sources[$key] == $local[$key] then
-                    .
-                else
-                    error("recipe \($recipe_name) redefines importPackagesRegistry source \($key) with different content")
-                end
-            )
-        ' "$file" "$merged" > "$merged.tmp" || recipe_die "failed to merge importPackagesRegistry for recipe '$name'"
-        mv "$merged.tmp" "$merged"
-    done
-
-    RECIPE_IMPORT_REGISTRY="$merged"
+    RECIPE_GLOBAL_REGISTRY_DATA=$(cat "$registry")
 }
 
 recipe_validate_import_package_sources() {
@@ -822,7 +798,11 @@ recipe_validate_import_package_sources() {
         file=$(recipe_json_path "$name")
         while IFS= read -r source_label; do
             [ -n "$source_label" ] || continue
-            jq -e --arg source_key "$source_label" '.sources[$source_key] != null' "$RECIPE_IMPORT_REGISTRY" >/dev/null || recipe_die "recipe '$name' references unknown importPackages source '$source_label'"
+            jq -n -e \
+                --arg source_key "$source_label" \
+                --argjson global_registry "$RECIPE_GLOBAL_REGISTRY_DATA" \
+                --argjson recipe_json "$(cat "$file")" \
+                '($recipe_json.actions.importPackagesRegistry[$source_key] // $global_registry.sources[$source_key]) != null' >/dev/null || recipe_die "recipe '$name' references unknown importPackages source '$source_label'"
         done < <(recipe_json_lines "$file" '.actions.importPackages[]?.source')
     done
 }
@@ -973,23 +953,58 @@ recipe_apply_remove_feed() {
 }
 
 recipe_registry_get() {
-    local source_key="$1"
-    local expr="$2"
+    local recipe_file="$1"
+    local source_key="$2"
+    local expr="$3"
 
-    jq -er --arg source_key "$source_key" ".sources[\$source_key] | $expr" "$RECIPE_IMPORT_REGISTRY"
+    local recipe_content="{}"
+    if [ -f "$recipe_file" ]; then
+        recipe_content=$(cat "$recipe_file")
+    fi
+
+    jq -n -er \
+        --arg source_key "$source_key" \
+        --argjson global_registry "$RECIPE_GLOBAL_REGISTRY_DATA" \
+        --argjson recipe_json "$recipe_content" \
+        '
+        ($recipe_json.actions.importPackagesRegistry[$source_key] // $global_registry.sources[$source_key]) as $source
+        | if $source == null then
+            error("source key \($source_key) not found in recipe or global registry")
+          else
+            $source | '"$expr"'
+          end
+        '
 }
 
 recipe_registry_get_optional() {
-    local source_key="$1"
-    local expr="$2"
+    local recipe_file="$1"
+    local source_key="$2"
+    local expr="$3"
 
-    jq -er --arg source_key "$source_key" ".sources[\$source_key] | $expr" "$RECIPE_IMPORT_REGISTRY" 2>/dev/null || true
+    local recipe_content="{}"
+    if [ -f "$recipe_file" ]; then
+        recipe_content=$(cat "$recipe_file")
+    fi
+
+    jq -n -er \
+        --arg source_key "$source_key" \
+        --argjson global_registry "$RECIPE_GLOBAL_REGISTRY_DATA" \
+        --argjson recipe_json "$recipe_content" \
+        '
+        ($recipe_json.actions.importPackagesRegistry[$source_key] // $global_registry.sources[$source_key]) as $source
+        | if $source == null then
+            empty
+          else
+            $source | '"$expr"'
+          end
+        ' 2>/dev/null || true
 }
 
 recipe_apply_import_package() {
-    local source_label="$1"
-    local import_path="$2"
-    local import_target="$3"
+    local recipe_file="$1"
+    local source_label="$2"
+    local import_path="$3"
+    local import_target="$4"
     local repo_url
     local repo_branch
     local sparse_root
@@ -1002,9 +1017,9 @@ recipe_apply_import_package() {
     [ -n "$source_label" ] || recipe_die "importPackages entry missing source"
     [ -n "$import_path" ] || recipe_die "importPackages entry missing path"
 
-    repo_url=$(recipe_registry_get "$source_label" '.gitUrl') || recipe_die "IMPORT_PACKAGES registry missing entry: $source_label"
-    repo_branch=$(recipe_registry_get_optional "$source_label" '.branch // empty')
-    sparse_root=$(recipe_registry_get_optional "$source_label" '.sparseRoot // empty')
+    repo_url=$(recipe_registry_get "$recipe_file" "$source_label" '.gitUrl') || recipe_die "IMPORT_PACKAGES registry missing entry: $source_label"
+    repo_branch=$(recipe_registry_get_optional "$recipe_file" "$source_label" '.branch // empty')
+    sparse_root=$(recipe_registry_get_optional "$recipe_file" "$source_label" '.sparseRoot // empty')
 
     if [ "$import_path" = "." ]; then
         repo_root_package=1
@@ -1184,7 +1199,7 @@ recipe_apply_one() {
         source_label=$(recipe_json_object_get "$entry" '.source')
         import_path=$(recipe_json_object_get "$entry" '.path')
         import_target=$(recipe_json_object_get_optional "$entry" '.target // empty')
-        recipe_apply_import_package "$source_label" "$import_path" "$import_target"
+        recipe_apply_import_package "$file" "$source_label" "$import_path" "$import_target"
     done < <(recipe_json_lines "$file" '.actions.importPackages[]? | @json')
     while IFS= read -r entry; do [ -n "$entry" ] && rm -rf "$RECIPE_BUILD_DIR/$entry"; done < <(recipe_json_lines "$file" '.actions.removePackageDirs[]?')
 
