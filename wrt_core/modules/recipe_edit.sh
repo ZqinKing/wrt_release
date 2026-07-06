@@ -350,14 +350,14 @@ recipe_render_plan_cli() {
             default_state_raw='off'
             default_state=$(recipe_cli_pad_style 8 "$RECIPE_CLI_DIM" "$default_state_raw")
         fi
-        if recipe_has_name "$name"; then
+        if recipe_compute_target_enabled "$name"; then
             target_state_raw='on'
             target_state=$(recipe_cli_pad_style 8 "$RECIPE_CLI_GREEN" "$target_state_raw")
         else
             target_state_raw='off'
             target_state=$(recipe_cli_pad_style 8 "$RECIPE_CLI_DIM" "$target_state_raw")
         fi
-        if recipe_compute_target_enabled "$name"; then
+        if recipe_has_name "$name"; then
             final_state_raw='on'
             final_state=$(recipe_cli_pad_style 8 "$RECIPE_CLI_GREEN" "$final_state_raw")
         else
