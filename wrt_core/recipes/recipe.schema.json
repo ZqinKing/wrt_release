@@ -110,7 +110,7 @@
             "properties": {
               "source": { "type": "string" },
               "path": { "type": "string" },
-              "target": { "type": "string" }
+              "packageName": { "type": "string" }
             }
           }
         },

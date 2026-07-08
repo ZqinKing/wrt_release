@@ -230,10 +230,10 @@ TARGET_TAGS=x86_64,immortalwrt,master
 
 ### `importPackages`
 
-- 作用：从 source 对应仓库导入目录到构建树
+- 作用：从 source 对应仓库导入目录到构建树，并将其以包名形式注册到本地 `custom_feed` 中，以防止编译到 `base` 目录。
 - 类型：对象数组
 - 必填字段：`source`、`path`
-- 可选字段：`target`
+- 可选字段：`packageName`
 
 示例：
 
@@ -246,7 +246,7 @@ TARGET_TAGS=x86_64,immortalwrt,master
   {
     "source": "luci-theme-argon-custom",
     "path": ".",
-    "target": "package/luci-theme-argon"
+    "packageName": "luci-theme-argon"
   }
 ]
 ```
@@ -255,8 +255,11 @@ TARGET_TAGS=x86_64,immortalwrt,master
 
 - `source` 必须能在当前 recipe 的 `importPackagesRegistry` 或全局 `import_registry.json` 中找到
 - `path` 表示仓库内要导入的目录路径，不是包名字段
-- 未设置 `target` 时，默认导入到 `package/<path>`
-- `path: "."` 表示导入仓库根目录；此时通常应显式设置 `target`
+- **`packageName` 推导与注册逻辑**：
+  * **显式指定**：如果设置了 `packageName`，则提取其 `basename` 作为最终的注册包名（如 `"packageName": "luci-theme-argon"` $\rightarrow$ 包名即为 `luci-theme-argon`）。
+  * **隐式推导**：未配置 `packageName` 时，系统会自动提取 `path` 的最后一部分名称（`basename`）作为最终的注册包名（如 `"path": "kmod-amneziawg"` $\rightarrow$ 包名为 `kmod-amneziawg`；`"path": "package/tailscale"` $\rightarrow$ 包名为 `tailscale`）。
+  * **强制限制**：若 `path` 为 `"."`（导入仓库根目录），默认推导出的包名为 `.` 导致校验失败。因此，当 `path` 设定为 `"."` 时，**必须显式提供 `packageName`**，否则 Recipe 前置校验阶段会直接报错退出。
+- 导入的目标路径固定为 `custom_feed/<包名>`，且导入后会自动执行本地 `custom_feed` 的 update 和 install 动作
 - 若 source 定义了 `sparseRoot`，实际导入源路径会解析为 `<sparseRoot>/<path>`
 
 ### `removePackageDirs`

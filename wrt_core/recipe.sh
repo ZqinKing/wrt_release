@@ -494,10 +494,10 @@ recipe_validate_action_paths() {
             recipe_is_safe_relative_path "$remove_dir" || recipe_die "recipe '$name' has unsafe removePackageDirs path '$remove_dir'"
         done < <(recipe_json_lines "$file" '.actions.removePackageDirs[]?')
 
-        while IFS= read -r target; do
-            [ -n "$target" ] || continue
-            recipe_is_safe_relative_path "$target" || recipe_die "recipe '$name' has unsafe importPackages target path '$target'"
-        done < <(recipe_json_lines "$file" '.actions.importPackages[]?.target // empty')
+        while IFS= read -r pkg_name; do
+            [ -n "$pkg_name" ] || continue
+            recipe_is_safe_relative_path "$pkg_name" || recipe_die "recipe '$name' has unsafe importPackages packageName '$pkg_name'"
+        done < <(recipe_json_lines "$file" '.actions.importPackages[]?.packageName // empty')
 
         while IFS= read -r config; do
             [ -n "$config" ] || continue
@@ -1004,7 +1004,7 @@ recipe_apply_import_package() {
     local recipe_file="$1"
     local source_label="$2"
     local import_path="$3"
-    local import_target="$4"
+    local package_name_override="$4"
     local repo_url
     local repo_branch
     local sparse_root
@@ -1033,18 +1033,18 @@ recipe_apply_import_package() {
         source_dir="$import_path"
     fi
 
-    if [ -n "$import_target" ]; then
-        target_rel="$import_target"
+    if [ -n "$package_name_override" ]; then
+        package_name=$(basename "$package_name_override")
     else
-        target_rel="package/$import_path"
+        package_name=$(basename "$import_path")
     fi
+    [ -n "$package_name" ] && [ "$package_name" != "." ] || recipe_die "$source_label import requires a valid package name"
+
+    target_rel="custom_feed/$package_name"
     target_dir="$RECIPE_BUILD_DIR/$target_rel"
     mkdir -p "$(dirname "$target_dir")"
 
     if [ "$repo_root_package" -eq 1 ]; then
-        package_name=$(basename "$target_rel")
-        [ -n "$package_name" ] || recipe_die "$source_label root package import requires a target path"
-
         if declare -F sync_repo_root_package_to_feed_dir >/dev/null 2>&1; then
             sync_repo_root_package_to_feed_dir "$repo_url" "$repo_branch" "$(dirname "$target_dir")" "$source_label" "$package_name" || return 1
         else
@@ -1063,36 +1063,47 @@ recipe_apply_import_package() {
         fi
 
         echo "recipe: imported $source_label:. to $target_rel"
-        return 0
+    else
+        if declare -F sync_sparse_packages_to_feed_dir >/dev/null 2>&1; then
+            local tmp_target
+            tmp_target=$(mktemp -d)
+            if ! sync_sparse_packages_to_feed_dir "$repo_url" "$repo_branch" "$tmp_target" "$source_label" "$source_dir"; then
+                rm -rf "$tmp_target"
+                return 1
+            fi
+            [ -d "$tmp_target/$source_dir" ] || recipe_die "$source_label lacks sparse path $source_dir"
+            rm -rf "$target_dir"
+            mv "$tmp_target/$source_dir" "$target_dir"
+            rm -rf "$tmp_target"
+        else
+            local tmp_dir
+            local clone_args=(clone --depth 1 --filter=blob:none --sparse)
+            tmp_dir=$(mktemp -d)
+            if [ -n "$repo_branch" ]; then
+                clone_args+=(-b "$repo_branch")
+            fi
+            clone_args+=("$repo_url" "$tmp_dir")
+            git "${clone_args[@]}"
+            git -C "$tmp_dir" sparse-checkout set "$source_dir"
+            [ -d "$tmp_dir/$source_dir" ] || recipe_die "$source_label lacks sparse path $source_dir"
+            rm -rf "$target_dir"
+            mv "$tmp_dir/$source_dir" "$target_dir"
+            rm -rf "$tmp_dir"
+        fi
+        echo "recipe: imported $source_label:$import_path to $target_rel"
     fi
 
-    if declare -F sync_sparse_packages_to_feed_dir >/dev/null 2>&1; then
-        local tmp_target
-        tmp_target=$(mktemp -d)
-        if ! sync_sparse_packages_to_feed_dir "$repo_url" "$repo_branch" "$tmp_target" "$source_label" "$source_dir"; then
-            rm -rf "$tmp_target"
-            return 1
-        fi
-        [ -d "$tmp_target/$source_dir" ] || recipe_die "$source_label lacks sparse path $source_dir"
-        rm -rf "$target_dir"
-        mv "$tmp_target/$source_dir" "$target_dir"
-        rm -rf "$tmp_target"
+    # Register and install package in custom_feed
+    echo "recipe: registering and installing $package_name in custom_feed..."
+    if [ -f "$RECIPE_BUILD_DIR/scripts/feeds" ]; then
+        (
+            cd "$RECIPE_BUILD_DIR"
+            ./scripts/feeds update custom_feed
+            ./scripts/feeds install -p custom_feed -f "$package_name"
+        )
     else
-        local tmp_dir
-        local clone_args=(clone --depth 1 --filter=blob:none --sparse)
-        tmp_dir=$(mktemp -d)
-        if [ -n "$repo_branch" ]; then
-            clone_args+=(-b "$repo_branch")
-        fi
-        clone_args+=("$repo_url" "$tmp_dir")
-        git "${clone_args[@]}"
-        git -C "$tmp_dir" sparse-checkout set "$source_dir"
-        [ -d "$tmp_dir/$source_dir" ] || recipe_die "$source_label lacks sparse path $source_dir"
-        rm -rf "$target_dir"
-        mv "$tmp_dir/$source_dir" "$target_dir"
-        rm -rf "$tmp_dir"
+        recipe_die "scripts/feeds not found, cannot register package to custom_feed"
     fi
-    echo "recipe: imported $source_label:$import_path to $target_rel"
 }
 
 recipe_run_script() {
@@ -1194,14 +1205,14 @@ recipe_apply_one() {
 
     while IFS= read -r entry; do [ -n "$entry" ] && recipe_apply_add_feed "$entry"; done < <(recipe_json_lines "$file" '.actions.addFeeds[]?')
     while IFS= read -r entry; do [ -n "$entry" ] && recipe_apply_remove_feed "$entry"; done < <(recipe_json_lines "$file" '.actions.removeFeeds[]?')
+    while IFS= read -r entry; do [ -n "$entry" ] && rm -rf "$RECIPE_BUILD_DIR/$entry"; done < <(recipe_json_lines "$file" '.actions.removePackageDirs[]?')
     while IFS= read -r entry; do
         [ -n "$entry" ] || continue
         source_label=$(recipe_json_object_get "$entry" '.source')
         import_path=$(recipe_json_object_get "$entry" '.path')
-        import_target=$(recipe_json_object_get_optional "$entry" '.target // empty')
+        import_target=$(recipe_json_object_get_optional "$entry" '.packageName // empty')
         recipe_apply_import_package "$file" "$source_label" "$import_path" "$import_target"
     done < <(recipe_json_lines "$file" '.actions.importPackages[]? | @json')
-    while IFS= read -r entry; do [ -n "$entry" ] && rm -rf "$RECIPE_BUILD_DIR/$entry"; done < <(recipe_json_lines "$file" '.actions.removePackageDirs[]?')
 
     recipe_apply_patch_actions "$name" "$file"
     recipe_apply_copy_actions "$name" "$file" '.actions.files[]? | @json'

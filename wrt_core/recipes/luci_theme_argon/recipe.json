@@ -31,7 +31,7 @@
       {
         "source": "luci-theme-argon-custom",
         "path": ".",
-        "target": "package/luci-theme-argon"
+        "packageName": "luci-theme-argon"
       }
     ],
     "removePackageDirs": [],

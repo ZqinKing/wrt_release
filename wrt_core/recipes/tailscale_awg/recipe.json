@@ -38,12 +38,12 @@
       {
         "source": "openwrt-tailscale-awg",
         "path": "package/tailscale",
-        "target": "package/tailscale"
+        "packageName": "tailscale"
       },
       {
         "source": "luci-app-tailscale-community",
         "path": "luci-app-tailscale-community",
-        "target": "package/luci-app-tailscale-community"
+        "packageName": "luci-app-tailscale-community"
       }
     ],
     "removePackageDirs": [
@@ -54,7 +54,7 @@
     "patches": [
       {
         "source": "patches/fix_upx_compress.patch",
-        "target": "package/tailscale",
+        "target": "custom_feed/tailscale",
         "strip": 1,
         "forward": true,
         "backup": false,

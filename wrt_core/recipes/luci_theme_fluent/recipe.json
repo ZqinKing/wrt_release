@@ -31,7 +31,7 @@
       {
         "source": "luci-theme-fluent",
         "path": "package/luci-theme-fluent",
-        "target": "package/luci-theme-fluent"
+        "packageName": "luci-theme-fluent"
       }
     ],
     "removePackageDirs": [],
