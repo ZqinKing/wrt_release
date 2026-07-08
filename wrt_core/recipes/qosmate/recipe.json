@@ -36,12 +36,12 @@
       {
         "source": "qosmate",
         "path": ".",
-        "target": "package/qosmate"
+        "packageName": "qosmate"
       },
       {
         "source": "luci-app-qosmate",
         "path": ".",
-        "target": "package/luci-app-qosmate"
+        "packageName": "luci-app-qosmate"
       }
     ],
     "removePackageDirs": [],
