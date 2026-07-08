@@ -1,0 +1,55 @@
+{
+  "$schema": "../recipe.schema.json",
+  "name": "qosmate",
+  "description": "QoSmate - Quality of Service management tool and LuCI app",
+  "enabled": false,
+  "phase": "pre_defconfig",
+  "depends": [],
+  "conflicts": [],
+  "tags": [
+    "network",
+    "qos",
+    "luci"
+  ],
+  "when": {
+    "targets": [],
+    "repo": [],
+    "branch": [],
+    "tags": []
+  },
+  "actions": {
+    "addFeeds": [],
+    "removeFeeds": [],
+    "importPackagesRegistry": {
+      "qosmate": {
+        "gitUrl": "https://github.com/hudra0/qosmate.git",
+        "branch": "main",
+        "sparseRoot": null
+      },
+      "luci-app-qosmate": {
+        "gitUrl": "https://github.com/hudra0/luci-app-qosmate.git",
+        "branch": "main",
+        "sparseRoot": null
+      }
+    },
+    "importPackages": [
+      {
+        "source": "qosmate",
+        "path": ".",
+        "target": "package/qosmate"
+      },
+      {
+        "source": "luci-app-qosmate",
+        "path": ".",
+        "target": "package/luci-app-qosmate"
+      }
+    ],
+    "removePackageDirs": [],
+    "patches": [],
+    "files": [],
+    "configs": [
+      "configs/qosmate.config"
+    ],
+    "script": null
+  }
+}
