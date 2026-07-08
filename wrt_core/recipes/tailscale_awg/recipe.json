@@ -60,6 +60,15 @@
         "backup": false,
         "rejectFile": false,
         "fuzz": 0
+      },
+      {
+        "source": "patches/fix_build_dependency.patch",
+        "target": "custom_feed/tailscale",
+        "strip": 1,
+        "forward": true,
+        "backup": false,
+        "rejectFile": false,
+        "fuzz": 0
       }
     ],
     "files": [],
