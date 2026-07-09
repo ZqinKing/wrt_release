@@ -31,6 +31,25 @@
               "null"
             ]
           },
+          "tag": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "commit": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "depth": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
           "sparseRoot": {
             "type": [
               "string",

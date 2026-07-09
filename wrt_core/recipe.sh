@@ -205,7 +205,7 @@ recipe_validate_structure() {
         all(.when.tags[]?; type == "string") and
         all(.actions.addFeeds[]?; type == "string") and
         all(.actions.removeFeeds[]?; type == "string") and
-        all(.actions.importPackagesRegistry[]?; (.gitUrl | type == "string" and length > 0) and ((has("branch") | not) or (.branch == null) or (.branch | type == "string")) and ((has("sparseRoot") | not) or (.sparseRoot == null) or (.sparseRoot | type == "string"))) and
+        all(.actions.importPackagesRegistry[]?; (.gitUrl | type == "string" and length > 0) and ((has("branch") | not) or (.branch == null) or (.branch | type == "string")) and ((has("tag") | not) or (.tag == null) or (.tag | type == "string")) and ((has("commit") | not) or (.commit == null) or (.commit | type == "string")) and ((has("depth") | not) or (.depth == null) or (.depth | type == "number")) and ((has("sparseRoot") | not) or (.sparseRoot == null) or (.sparseRoot | type == "string"))) and
         all(.actions.importPackages[]?; type == "object" and (.source | type == "string" and length > 0) and (.path | type == "string" and length > 0) and ((has("target") | not) or (.target | type == "string" and length > 0))) and
         all(.actions.removePackageDirs[]?; type == "string") and
         all(.actions.patches[]?; type == "object" and (.source | type == "string" and length > 0) and (.target | type == "string" and length > 0) and ((has("strip") | not) or (.strip | type == "number" and . >= 0 and floor == .)) and ((has("binary") | not) or (.binary | type == "boolean")) and ((has("ignoreWhitespace") | not) or (.ignoreWhitespace | type == "boolean")) and ((has("forward") | not) or (.forward | type == "boolean")) and ((has("backup") | not) or (.backup | type == "boolean")) and ((has("rejectFile") | not) or (.rejectFile | type == "boolean")) and ((has("fuzz") | not) or (.fuzz | type == "number" and . >= 0 and floor == .))) and
@@ -218,7 +218,7 @@ recipe_validate_global_registry() {
     local registry="$RECIPE_BASE_PATH/recipes/import_registry.json"
 
     [ -f "$registry" ] || recipe_die "IMPORT_PACKAGES registry not found: $registry"
-    jq -e '(.sources | type == "object") and all(.sources[]; (.gitUrl | type == "string" and length > 0) and ((has("branch") | not) or (.branch == null) or (.branch | type == "string")) and ((has("sparseRoot") | not) or (.sparseRoot == null) or (.sparseRoot | type == "string")))' "$registry" >/dev/null || recipe_die "invalid IMPORT_PACKAGES registry: $registry"
+    jq -e '(.sources | type == "object") and all(.sources[]; (.gitUrl | type == "string" and length > 0) and ((has("branch") | not) or (.branch == null) or (.branch | type == "string")) and ((has("tag") | not) or (.tag == null) or (.tag | type == "string")) and ((has("commit") | not) or (.commit == null) or (.commit | type == "string")) and ((has("depth") | not) or (.depth == null) or (.depth | type == "number")) and ((has("sparseRoot") | not) or (.sparseRoot == null) or (.sparseRoot | type == "string")))' "$registry" >/dev/null || recipe_die "invalid IMPORT_PACKAGES registry: $registry"
 }
 
 recipe_has_name() {
@@ -1000,6 +1000,92 @@ recipe_registry_get_optional() {
         ' 2>/dev/null || true
 }
 
+git_sync_repo() {
+    local repo_url="$1"
+    local branch="$2"
+    local tag="$3"
+    local commit="$4"
+    local depth="$5"
+    local target_dir="$6"
+    local is_sparse="$7"
+    shift 7
+    local packages=("$@")
+
+    git_run() {
+        if declare -F git_retry >/dev/null 2>&1; then
+            git_retry "$@"
+        else
+            git "$@"
+        fi
+    }
+
+    # Ensure target directory is clean
+    rm -rf "$target_dir"
+
+    # If commit is specified:
+    if [ -n "$commit" ]; then
+        mkdir -p "$target_dir"
+        git init "$target_dir"
+        git -C "$target_dir" remote add origin "$repo_url"
+        
+        if [ "$is_sparse" -eq 1 ]; then
+            git -C "$target_dir" sparse-checkout init --cone
+            git -C "$target_dir" sparse-checkout set "${packages[@]}"
+        fi
+        
+        local fetch_args=()
+        if [ -n "$depth" ]; then
+            fetch_args+=(--depth "$depth")
+        fi
+        
+        echo "正在获取指定提交 $commit ..."
+        if git_run -C "$target_dir" fetch "${fetch_args[@]}" origin "$commit" 2>/dev/null; then
+            git -C "$target_dir" checkout --quiet FETCH_HEAD
+        else
+            # Fallback to fetching ref
+            echo "直接获取提交失败，尝试获取引用..."
+            local fetch_ref="refs/heads/*:refs/remotes/origin/*"
+            if [ -n "$branch" ]; then
+                fetch_ref="refs/heads/$branch"
+            elif [ -n "$tag" ]; then
+                fetch_ref="refs/tags/$tag"
+            fi
+            git_run -C "$target_dir" fetch "${fetch_args[@]}" origin "$fetch_ref"
+            git -C "$target_dir" checkout --quiet "$commit"
+        fi
+    else
+        # If no commit, we can use standard git clone
+        local clone_args=(clone --filter=blob:none)
+        if [ -n "$depth" ]; then
+            clone_args+=(--depth "$depth")
+        fi
+        if [ "$is_sparse" -eq 1 ]; then
+            clone_args+=(--sparse)
+        fi
+        
+        # Decide what revision to clone
+        if [ -n "$tag" ]; then
+            clone_args+=(-b "$tag")
+        elif [ -n "$branch" ]; then
+            clone_args+=(-b "$branch")
+        fi
+        
+        clone_args+=("$repo_url" "$target_dir")
+        
+        echo "正在克隆仓库..."
+        if ! git_run "${clone_args[@]}"; then
+            return 1
+        fi
+        
+        if [ "$is_sparse" -eq 1 ]; then
+            if ! git_run -C "$target_dir" sparse-checkout set "${packages[@]}"; then
+                return 1
+            fi
+        fi
+    fi
+    return 0
+}
+
 recipe_apply_import_package() {
     local recipe_file="$1"
     local source_label="$2"
@@ -1007,6 +1093,9 @@ recipe_apply_import_package() {
     local package_name_override="$4"
     local repo_url
     local repo_branch
+    local repo_tag
+    local repo_commit
+    local repo_depth
     local sparse_root
     local source_dir
     local target_rel
@@ -1019,6 +1108,9 @@ recipe_apply_import_package() {
 
     repo_url=$(recipe_registry_get "$recipe_file" "$source_label" '.gitUrl') || recipe_die "IMPORT_PACKAGES registry missing entry: $source_label"
     repo_branch=$(recipe_registry_get_optional "$recipe_file" "$source_label" '.branch // empty')
+    repo_tag=$(recipe_registry_get_optional "$recipe_file" "$source_label" '.tag // empty')
+    repo_commit=$(recipe_registry_get_optional "$recipe_file" "$source_label" '.commit // empty')
+    repo_depth=$(recipe_registry_get_optional "$recipe_file" "$source_label" '.depth // empty')
     sparse_root=$(recipe_registry_get_optional "$recipe_file" "$source_label" '.sparseRoot // empty')
 
     if [ "$import_path" = "." ]; then
@@ -1045,51 +1137,20 @@ recipe_apply_import_package() {
     mkdir -p "$(dirname "$target_dir")"
 
     if [ "$repo_root_package" -eq 1 ]; then
-        if declare -F sync_repo_root_package_to_feed_dir >/dev/null 2>&1; then
-            sync_repo_root_package_to_feed_dir "$repo_url" "$repo_branch" "$(dirname "$target_dir")" "$source_label" "$package_name" || return 1
-        else
-            local tmp_dir
-            local clone_args=(clone --depth 1 --filter=blob:none)
-            tmp_dir=$(mktemp -d)
-            if [ -n "$repo_branch" ]; then
-                clone_args+=(-b "$repo_branch")
-            fi
-            clone_args+=("$repo_url" "$tmp_dir")
-            git "${clone_args[@]}"
-            [ -f "$tmp_dir/Makefile" ] || recipe_die "$source_label root package repository lacks Makefile"
-            rm -rf "$tmp_dir/.git"
-            rm -rf "$target_dir"
-            mv "$tmp_dir" "$target_dir"
-        fi
-
+        git_sync_repo "$repo_url" "$repo_branch" "$repo_tag" "$repo_commit" "$repo_depth" "$target_dir" 0 || return 1
+        [ -f "$target_dir/Makefile" ] || recipe_die "$source_label root package repository lacks Makefile"
         echo "recipe: imported $source_label:. to $target_rel"
     else
-        if declare -F sync_sparse_packages_to_feed_dir >/dev/null 2>&1; then
-            local tmp_target
-            tmp_target=$(mktemp -d)
-            if ! sync_sparse_packages_to_feed_dir "$repo_url" "$repo_branch" "$tmp_target" "$source_label" "$source_dir"; then
-                rm -rf "$tmp_target"
-                return 1
-            fi
-            [ -d "$tmp_target/$source_dir" ] || recipe_die "$source_label lacks sparse path $source_dir"
-            rm -rf "$target_dir"
-            mv "$tmp_target/$source_dir" "$target_dir"
-            rm -rf "$tmp_target"
-        else
-            local tmp_dir
-            local clone_args=(clone --depth 1 --filter=blob:none --sparse)
-            tmp_dir=$(mktemp -d)
-            if [ -n "$repo_branch" ]; then
-                clone_args+=(-b "$repo_branch")
-            fi
-            clone_args+=("$repo_url" "$tmp_dir")
-            git "${clone_args[@]}"
-            git -C "$tmp_dir" sparse-checkout set "$source_dir"
-            [ -d "$tmp_dir/$source_dir" ] || recipe_die "$source_label lacks sparse path $source_dir"
-            rm -rf "$target_dir"
-            mv "$tmp_dir/$source_dir" "$target_dir"
+        local tmp_dir
+        tmp_dir=$(mktemp -d)
+        if ! git_sync_repo "$repo_url" "$repo_branch" "$repo_tag" "$repo_commit" "$repo_depth" "$tmp_dir" 1 "$source_dir"; then
             rm -rf "$tmp_dir"
+            return 1
         fi
+        [ -d "$tmp_dir/$source_dir" ] || recipe_die "$source_label lacks sparse path $source_dir"
+        rm -rf "$target_dir"
+        mv "$tmp_dir/$source_dir" "$target_dir"
+        rm -rf "$tmp_dir"
         echo "recipe: imported $source_label:$import_path to $target_rel"
     fi
 
