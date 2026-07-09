@@ -819,9 +819,7 @@ recipe_init() {
     RECIPE_ALLOW_CONFLICTS="${7:-0}"
 
     if ! command -v jq >/dev/null 2>&1; then
-        echo "recipe: warning: jq is not installed. Skipping recipe system..." >&2
-        RECIPE_PLAN=()
-        return 0
+        recipe_die "jq is not installed. jq is a required build dependency to process recipes."
     fi
 
     if [ -z "$RECIPE_TARGET_NAME" ] || [ -z "$RECIPE_TARGET_INI" ] || [ -z "$RECIPE_BUILD_DIR" ]; then
