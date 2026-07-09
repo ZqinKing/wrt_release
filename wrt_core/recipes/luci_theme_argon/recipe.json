@@ -34,7 +34,10 @@
         "packageName": "luci-theme-argon"
       }
     ],
-    "removePackageDirs": [],
+    "removePackageDirs": [
+      "feeds/luci/themes/luci-theme-argon",
+      "package/feeds/luci/luci-theme-argon"
+    ],
     "patches": [],
     "files": [
       {
