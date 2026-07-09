@@ -470,6 +470,8 @@ TARGET_TAGS=x86_64,immortalwrt,master
   - 只输出当前目标的 recipe 计划
 - `./build.sh <target> recipe_config`
   - 交互式切换目标级 `RECIPES` / `DISABLE_RECIPES`
+  > [!WARNING]
+  > **本地调试注意事项**：`recipe_config` 会直接修改被 Git 追踪的 `.ini` 与 `recipe.json` 文件。在本地调试时，请注意避免将这些临时修改误提交到 Git。
 - `./build.sh <target> debug`
   - 跑到 `make defconfig` 后停止，适合检查 config 合并结果
 

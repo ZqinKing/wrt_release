@@ -61,6 +61,10 @@ cd wrt_release
 
 依赖中的 recipe 不能直接关闭；必须先关闭依赖它的 recipe。非交互 `recipe_preview` 仍保持只打印并退出。
 
+> [!WARNING]
+> **本地调试注意事项**：
+> `recipe_config` 会直接修改被 Git 追踪的文件（如 `wrt_core/compilecfg/*.ini` 和 `wrt_core/recipes/<recipe>/recipe.json`）。在本地调试和切换配置时，请务必注意避免误提交这些临时性的修改。
+
 编译完成后，脚本会从 `<BUILD_DIR>/bin/targets/` 收集固件文件到仓库根目录的 `firmware/`。每次完整构建前会清理旧的目标固件文件，`firmware/Packages.manifest` 会被移除。
 
 ## 5. 支持设备
