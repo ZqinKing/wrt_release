@@ -430,6 +430,10 @@ if [[ -d action_build ]]; then
     BUILD_DIR="action_build"
 fi
 
+if grep -qE "^CONFIG_TARGET_x86_64=y" "$CONFIG_FILE" 2>/dev/null; then
+    export WRT_IS_X86_64=1
+fi
+
 "$BASE_PATH/update.sh" "$REPO_URL" "$REPO_BRANCH" "$BUILD_DIR" "$COMMIT_HASH"
 
 apply_config

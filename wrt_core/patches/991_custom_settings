@@ -17,3 +17,17 @@ if uci show dropbear | grep -q "DirectInterface"; then
     uci commit dropbear
     /etc/init.d/dropbear restart
 fi
+
+# x64 使用独立主机名和密码，其它机型保持默认
+if [ "$(uname -m)" = "x86_64" ]; then
+    uci set system.@system[0].hostname='ARI'
+    uci commit system
+    (echo "123321qq"; echo "123321qq") | passwd root
+else
+    # 设置主机名
+    uci set system.@system[0].hostname='ARI-CO'
+    uci commit system
+
+    # 设置默认密码
+    (echo "123321ww"; echo "123321ww") | passwd root
+fi
