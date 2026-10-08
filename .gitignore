@@ -32,3 +32,4 @@ wrt_core/deconfig/test.config
 .taskmaster/
 .sisyphus/
 AGENTS.md
+.omo/
