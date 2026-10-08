@@ -276,6 +276,9 @@ install_custom_feed() {
 
     collect_missing_directories "$custom_feed_worktree_dir" required_feed_dirs missing_feed_dirs
 
+    echo "src-link netcontrol /home/zqinking/network_control/package" >>"$feeds_path"
+    network_retry ./scripts/feeds update netcontrol
+
     if [ ${#missing_feed_dirs[@]} -ne 0 ]; then
         printf '错误：%s 本地 feed 未生成以下仓库依赖路径：\n' "$custom_feed_name" >&2
         printf '  - %s\n' "${missing_feed_dirs[@]}" >&2
