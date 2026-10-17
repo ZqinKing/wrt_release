@@ -1,0 +1,237 @@
+--- a/src/dnsmasq.h
++++ b/src/dnsmasq.h
+@@ -1440,7 +1440,8 @@ void report_addresses(struct dns_header
+ #endif
+ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,  
+ 		      struct in_addr local_addr, struct in_addr local_netmask, 
+-		      time_t now, int ad_reqd, int do_bit, int no_cache, int *stale, int *filtered);
++		      time_t now, int ad_reqd, int do_bit, int no_cache, int *stale,
++		      int *filtered, union mysockaddr *query_source);
+ int check_for_bogus_wildcard(struct dns_header *header, size_t qlen, char *name, 
+ 			     time_t now);
+ int check_for_ignored_address(struct dns_header *header, size_t qlen);
+@@ -1757,6 +1758,7 @@ void drop_ubus_listeners(void);
+ int ubus_dns_notify_has_subscribers(void);
+ struct blob_buf *ubus_dns_notify_prepare(void);
+ int ubus_dns_notify(const char *type, ubus_dns_notify_cb cb, void *priv);
++void ubus_dns_notify_block(const char *name, const union mysockaddr *source);
+ void ubus_event_bcast(const char *type, const char *mac, const char *ip, const char *name, const char *interface);
+ #  ifdef HAVE_CONNTRACK
+ void ubus_event_bcast_connmark_allowlist_refused(u32 mark, const char *name);
+@@ -1975,7 +1977,8 @@ int lookup_domain(char *qdomain, int fla
+ int filter_servers(int seed, int flags, int *lowout, int *highout);
+ int is_local_answer(time_t now, int first, char *name);
+ size_t make_local_answer(int flags, int gotname, size_t size, struct dns_header *header,
+-			 char *name, size_t limit, int first, int last, int ede);
++			 char *name, size_t limit, int first, int last, int ede,
++			 union mysockaddr *query_source);
+ int server_samegroup(struct server *a, struct server *b);
+ #ifdef HAVE_DNSSEC
+ int dnssec_server(struct server *server, char *keyname, int is_ds, int *firstp, int *lastp);
+--- a/src/forward.c
++++ b/src/forward.c
+@@ -589,7 +589,7 @@ static void forward_query(int udpfd, uni
+  reply:
+   if (udpfd != -1)
+     {
+-      if (!(plen = make_local_answer(flags, gotname, plen, header, daemon->namebuff, replylimit, first, last, ede)))
++      if (!(plen = make_local_answer(flags, gotname, plen, header, daemon->namebuff, replylimit, first, last, ede, udpaddr)))
+ 	return;
+       
+       if (fwd_flags & FREC_HAS_PHEADER)
+@@ -1952,7 +1952,8 @@ void receive_query(struct listener *list
+ 	fwd_flags |= FREC_NO_CACHE;
+ 
+       m = answer_request(header, ((char *) header) + udp_size, (size_t)n, 
+-			 dst_addr_4, netmask, now, fwd_flags & FREC_AD_QUESTION, do_bit, !cacheable, &stale, &filtered);
++				 dst_addr_4, netmask, now, fwd_flags & FREC_AD_QUESTION, do_bit,
++				 !cacheable, &stale, &filtered, &source_addr);
+       
+       metric = stale ? METRIC_DNS_STALE_ANSWERED : METRIC_DNS_LOCAL_ANSWERED;
+       
+@@ -2579,7 +2580,8 @@ void tcp_request(int confd, time_t now,
+ #endif
+ 	      else
+ 		m = answer_request(out_header, ((char *) out_header) + 65536, (size_t)size, 
+-				   dst_addr_4, netmask, now, ad_reqd, do_bit, !cacheable, &stale, &filtered);
++				   dst_addr_4, netmask, now, ad_reqd, do_bit, !cacheable,
++				   &stale, &filtered, &peer_addr);
+ 	    }
+ 	}
+       
+@@ -2731,7 +2733,7 @@ void tcp_request(int confd, time_t now,
+       if (m == 0)
+ 	{
+ 	  if (!(m = make_local_answer(flags, gotname, size, out_header, daemon->namebuff,
+-				      65536, first, last, ede)))
++				      65536, first, last, ede, &peer_addr)))
+ 	    break;
+ 	}
+       else if (ede == EDE_UNSET)
+--- a/src/domain-match.c
++++ b/src/domain-match.c
+@@ -408,7 +408,8 @@ int is_local_answer(time_t now, int firs
+   return rc;
+ }
+ 
+-size_t make_local_answer(int flags, int gotname, size_t size, struct dns_header *header, char *name, size_t limit, int first, int last, int ede)
++size_t make_local_answer(int flags, int gotname, size_t size, struct dns_header *header, char *name, size_t limit, int first, int last, int ede,
++                         union mysockaddr *query_source)
+ {
+   int trunc = 0, anscount = 0;
+   unsigned char *p;
+@@ -418,6 +419,11 @@ size_t make_local_answer(int flags, int
+   
+   setup_reply(header, flags, ede);
+ 
++#ifdef HAVE_UBUS
++  if (query_source && (flags & (F_IPV4 | F_IPV6)))
++    ubus_dns_notify_block(name, query_source);
++#endif
++
+   gotname &= ~(F_QUERY | F_DS);
+   
+   if (flags & (F_NXDOMAIN | F_NOERR))
+--- a/src/rfc1035.c
++++ b/src/rfc1035.c
+@@ -1692,7 +1692,8 @@ static int cache_not_validated(const str
+ /* return zero if we can't answer from cache, or packet size if we can */
+ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,  
+ 		      struct in_addr local_addr, struct in_addr local_netmask, 
+-		      time_t now, int ad_reqd, int do_bit, int no_cache, int *stale, int *filtered) 
++		      time_t now, int ad_reqd, int do_bit, int no_cache, int *stale,
++		      int *filtered, union mysockaddr *query_source) 
+ {
+   char *name = daemon->namebuff;
+   unsigned char *p, *ansp;
+@@ -1701,6 +1702,7 @@ size_t answer_request(struct dns_header
+   int nameoffset;
+   unsigned short flag;
+   int ans, anscount = 0, nscount = 0, addncount = 0;
++  int block_reported = 0;
+   struct crec *crecp, *soa_lookup = NULL;
+   int nxdomain = 0, notimp = 0, auth = 1, trunc = 0, sec_data = 1;
+   struct mx_srv_record *rec;
+@@ -1787,6 +1789,13 @@ size_t answer_request(struct dns_header
+ 	  {
+ 	    if (crecp->flags & F_CONFIG || qtype == T_CNAME)
+ 	      ans = 1;
++	#ifdef HAVE_UBUS
++	    if (!block_reported && (crecp->flags & F_CONFIG) && query_source)
++	      {
++		ubus_dns_notify_block(name, query_source);
++		block_reported = 1;
++	      }
++	#endif
+ 	    
+ 	    if (!(crecp->flags & F_DNSSECOK))
+ 	      sec_data = 0;
+@@ -2121,6 +2130,13 @@ size_t answer_request(struct dns_header
+ 		    
+ 		    if (!(crecp->flags & (F_HOSTS | F_DHCP)))
+ 		      auth = 0;
++	#ifdef HAVE_UBUS
++		    if (!block_reported && (crecp->flags & F_CONFIG) && query_source)
++		      {
++			ubus_dns_notify_block(name, query_source);
++			block_reported = 1;
++		      }
++	#endif
+ 		    
+ 		    if (qtype != T_ANY && rr_on_list(daemon->filter_rr, qtype) &&
+ 			!(crecp->flags & (F_HOSTS | F_DHCP | F_CONFIG | F_NEG)))
+--- a/src/ubus.c
++++ b/src/ubus.c
+@@ -72,11 +72,40 @@ static struct ubus_object ubus_object =
+   .subscribe_cb = ubus_subscribe_cb,
+ };
+ 
++static int ubus_handle_dns_capabilities(struct ubus_context *ctx,
++		struct ubus_object *obj, struct ubus_request_data *req,
++		const char *method, struct blob_attr *msg)
++{
++	int result;
++
++	(void)obj;
++	(void)method;
++	(void)msg;
++	if (blob_buf_init(&b, 0) != 0 ||
++		blobmsg_add_u32(&b, "version", 1U) != 0 ||
++		blobmsg_add_u8(&b, "config_hits", 1U) != 0 ||
++		blobmsg_add_string(&b, "event", "dns_block") != 0 ||
++		blobmsg_add_u8(&b, "source_ip", 1U) != 0) {
++		blob_buf_free(&b);
++		return UBUS_STATUS_UNKNOWN_ERROR;
++	}
++	result = ubus_send_reply(ctx, req, b.head);
++	blob_buf_free(&b);
++	return result;
++}
++
++static const struct ubus_method ubus_dns_object_methods[] = {
++	UBUS_METHOD_NOARG("capabilities", ubus_handle_dns_capabilities),
++};
++
+ static struct ubus_object_type ubus_dns_object_type =
+-   { .name = "dnsmasq.dns" };
++	UBUS_OBJECT_TYPE("dnsmasq.dns", ubus_dns_object_methods);
+ 
+ static struct ubus_object ubus_dns_object = {
++	.name = NULL,
+ 	.type = &ubus_dns_object_type,
++	.methods = ubus_dns_object_methods,
++	.n_methods = ARRAY_SIZE(ubus_dns_object_methods),
+ };
+ 
+ static void ubus_subscribe_cb(struct ubus_context *ctx, struct ubus_object *obj)
+@@ -406,6 +435,50 @@ int ubus_dns_notify(const char *type, ub
+ 	return ubus_complete_request(ubus, &dreq.req.req, 100);
+ }
+ 
++void ubus_dns_notify_block(const char *name, const union mysockaddr *source)
++{
++	struct ubus_context *ubus = (struct ubus_context *)daemon->ubus;
++	union mysockaddr source_address;
++	char source_ip[INET6_ADDRSTRLEN];
++	char device_mac[18];
++	unsigned char mac[6];
++	const void *address;
++	int mac_length;
++	int family;
++
++	if (!ubus || !ubus_dns_object.has_subscribers || !name || !source)
++		return;
++	source_address = *source;
++	mac_length = find_mac(&source_address, mac, 1, dnsmasq_time());
++	if (mac_length == 6)
++		(void)snprintf(device_mac, sizeof(device_mac), "%02x:%02x:%02x:%02x:%02x:%02x",
++			mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
++	if (source->sa.sa_family == AF_INET) {
++		family = AF_INET;
++		address = &source->in.sin_addr;
++	} else if (source->sa.sa_family == AF_INET6) {
++		family = AF_INET6;
++		address = &source->in6.sin6_addr;
++	} else {
++		return;
++	}
++	if (inet_ntop(family, address, source_ip, sizeof(source_ip)) == NULL ||
++		blob_buf_init(&b, 0) != 0)
++		return;
++	if (blobmsg_add_string(&b, "name", name) != 0 ||
++		blobmsg_add_string(&b, "src_ip", source_ip) != 0 ||
++		blobmsg_add_string(&b, "action", "block") != 0) {
++		blob_buf_free(&b);
++		return;
++	}
++	if (mac_length == 6 && blobmsg_add_string(&b, "mac", device_mac) != 0) {
++		blob_buf_free(&b);
++		return;
++	}
++	(void)ubus_notify(ubus, &ubus_dns_object, "dns_block", b.head, -1);
++	blob_buf_free(&b);
++}
++
+ void ubus_event_bcast(const char *type, const char *mac, const char *ip, const char *name, const char *interface)
+ {
+   struct ubus_context *ubus = (struct ubus_context *)daemon->ubus;

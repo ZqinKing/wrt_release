@@ -36,6 +36,40 @@ change_dnsmasq2full() {
 }
 
 
+install_dnsmasq_netcontrol_patch() {
+    local dnsmasq_dir="$BUILD_DIR/package/network/services/dnsmasq"
+    local makefile="$dnsmasq_dir/Makefile"
+    local patch_file="$BASE_PATH/patches/dnsmasq/300-netcontrol-dns-block.patch"
+    local upstream_version
+
+    if [ ! -f "$makefile" ]; then
+        echo "错误：dnsmasq Makefile 不存在：$makefile" >&2
+        return 1
+    fi
+
+    if [ ! -f "$patch_file" ]; then
+        echo "错误：dnsmasq 补丁文件不存在：$patch_file" >&2
+        return 1
+    fi
+
+    upstream_version=$(awk -F':=' '
+        /^[[:space:]]*PKG_UPSTREAM_VERSION[[:space:]]*:=/ {
+            value = $2
+            gsub(/[[:space:]]/, "", value)
+            print value
+            exit
+        }
+    ' "$makefile")
+
+    if [ "$upstream_version" != "2.93" ]; then
+        echo "错误：dnsmasq PKG_UPSTREAM_VERSION 为 ${upstream_version:-未定义}，期望 2.93" >&2
+        return 1
+    fi
+
+    install -Dm644 "$patch_file" "$dnsmasq_dir/patches/300-netcontrol-dns-block.patch"
+}
+
+
 fix_mk_def_depends() {
     sed -i 's/libustream-mbedtls/libustream-openssl/g' $BUILD_DIR/include/target.mk 2>/dev/null
     if [ -f $BUILD_DIR/target/linux/qualcommax/Makefile ]; then

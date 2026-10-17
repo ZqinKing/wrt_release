@@ -75,6 +75,7 @@ stage_pre_install_source_fixes() {
     fix_miniupnpd
     update_golang
     change_dnsmasq2full
+    install_dnsmasq_netcontrol_patch
     fix_mk_def_depends
 
     update_default_lan_addr
