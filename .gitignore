@@ -10,6 +10,7 @@ lede/
 libwrt/
 immortalwrt/
 airoha-wrt/
+ponwrt/
 compilecfg/test.ini
 deconfig/test.config
 *.swp
