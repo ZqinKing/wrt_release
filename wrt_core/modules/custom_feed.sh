@@ -36,6 +36,7 @@ sync_sparse_packages_to_feed_dir() {
     local missing_packages=()
     local clone_args=(clone --depth 1 --filter=blob:none --sparse)
     local pkg
+    local target_pkg
 
     tmp_dir=$(mktemp -d)
 
@@ -60,8 +61,12 @@ sync_sparse_packages_to_feed_dir() {
 
     for pkg in "${packages[@]}"; do
         if [ -d "$tmp_dir/$pkg" ]; then
-            rm -rf "$target_dir/$pkg"
-            mv "$tmp_dir/$pkg" "$target_dir/"
+            target_pkg="$target_dir/$pkg"
+            if ! mkdir -p "$(dirname "$target_pkg")" || ! rm -rf "$target_pkg" || ! mv "$tmp_dir/$pkg" "$target_pkg"; then
+                echo "错误：无法将 $repo_label 的 $pkg 移动到 $target_pkg" >&2
+                rm -rf "$tmp_dir"
+                return 1
+            fi
         else
             missing_packages+=("$pkg")
         fi

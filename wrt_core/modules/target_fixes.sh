@@ -22,8 +22,20 @@ fix_default_set() {
 fix_miniupnpd() {
     local miniupnpd_dir="$BUILD_DIR/feeds/packages/net/miniupnpd"
     local patch_file="999-chanage-default-leaseduration.patch"
+    local upstream_repo="https://github.com/immortalwrt/packages.git"
+    local upstream_branch="openwrt-25.12"
 
     if [ -d "$miniupnpd_dir" ] && [ -f "$BASE_PATH/patches/$patch_file" ]; then
+        if ! sync_sparse_packages_to_feed_dir \
+            "$upstream_repo" \
+            "$upstream_branch" \
+            "$BUILD_DIR/feeds/packages" \
+            "immortalwrt/packages" \
+            "net/miniupnpd"; then
+            echo "错误：同步 miniupnpd 到 $upstream_branch 分支失败" >&2
+            return 1
+        fi
+
         install -Dm644 "$BASE_PATH/patches/$patch_file" "$miniupnpd_dir/patches/$patch_file"
     fi
 }
