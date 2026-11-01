@@ -72,21 +72,21 @@ update_singbox() {
     fi
 
     if [ -d "$target_dir" ]; then
-        echo "正在将 sing-box 锁定编译为 1.11.1 版本..."
+        echo "正在将 sing-box 锁定编译为 1.14.4 版本..."
         local mk_path="$target_dir/Makefile"
         if [ -f "$mk_path" ]; then
             # 1. 强行修改 Makefile 中的版本号
-            sed -i 's/^PKG_VERSION:=.*/PKG_VERSION:=1.11.1/g' "$mk_path"
+            sed -i 's/^PKG_VERSION:=.*/PKG_VERSION:=1.14.4/g' "$mk_path"
             
-            # 2. 动态获取并更新 sing-box 1.11.1 官方源码的 SHA256 哈希值（防止 OpenWrt 报错）
-            echo "正在获取 sing-box v1.11.1 源码校验和..."
-            local openwrt_tarball_url="https://codeload.github.com/SagerNet/sing-box/tar.gz/v1.11.1"
+            # 2. 动态获取并更新 sing-box 1.14.4 官方源码的 SHA256 哈希值（防止 OpenWrt 报错）
+            echo "正在获取 sing-box v1.14.14 源码校验和..."
+            local openwrt_tarball_url="https://codeload.github.com/SagerNet/sing-box/tar.gz/v1.14.4"
             local pkg_hash
             pkg_hash=$(curl -fsSL "$openwrt_tarball_url" | sha256sum | cut -d' ' -f1)
             
             if [ -n "$pkg_hash" ]; then
                 sed -i "s/^PKG_HASH:=.*/PKG_HASH:=$pkg_hash/g" "$mk_path"
-                echo "sing-box 已成功锁定至 1.11.1，哈希值为: $pkg_hash"
+                echo "sing-box 已成功锁定至 1.14.4，哈希值为: $pkg_hash"
             else
                 # 如果网络波动获取失败，退化为 skip 跳过哈希校验（部分 OpenWrt 固件支持）
                 echo "警告：未能获取 sing-box 源码哈希，尝试使用 skip 绕过" >&2
