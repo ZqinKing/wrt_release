@@ -1,0 +1,89 @@
+--- a/root/usr/share/passwall/app.sh
++++ b/root/usr/share/passwall/app.sh
+@@ -1068,9 +1068,26 @@
+ 	#echolog "清除定时执行命令。"
+ }
+ 
++smartdns_service_ready() {
++	local smartdns_enabled
++	smartdns_enabled=$(uci -q get smartdns.@smartdns[0].enabled 2>/dev/null)
++	[ -x /etc/init.d/smartdns ] && [ "$smartdns_enabled" = "1" ] && [ -d /etc/smartdns ]
++}
++
+ restart_smartdns() {
++	if ! smartdns_service_ready; then
++		echolog "  * 主 SmartDNS 未安装、未启用或配置目录不存在，PassWall 启动中止！"
++		return 1
++	fi
+ 	rm -rf /tmp/smartdns.cache
+-	[ -x /etc/init.d/smartdns ] && /etc/init.d/smartdns reload >/dev/null 2>&1
++	if ! /etc/init.d/smartdns reload >/dev/null 2>&1; then
++		echolog "  * 主 SmartDNS reload 失败，PassWall 启动中止！"
++		return 1
++	fi
++	if ! busybox pidof smartdns >/dev/null 2>&1; then
++		echolog "  * 主 SmartDNS 进程未运行，PassWall 启动中止！"
++		return 1
++	fi
+ }
+ 
+ del_smartdns_conf() {
+@@ -1081,7 +1098,9 @@
+ 		sed -i "\|^conf-file ${smartdns_conf}$|d" "$custom_conf"
+ 	fi
+ 	rm -rf /tmp/smartdns.cache
+-	[ -x /etc/init.d/smartdns ] && /etc/init.d/smartdns reload >/dev/null 2>&1
++	if smartdns_service_ready; then
++		/etc/init.d/smartdns reload >/dev/null 2>&1 || echolog "  * 主 SmartDNS reload 失败，已完成 PassWall 配置清理。"
++	fi
+ }
+ 
+ get_direct_dns_mode() {
+@@ -1293,6 +1312,14 @@
+ 			esac
+ 			local smartdns_config="/tmp/etc/smartdns/passwall.conf"
+ 			local subnet_ip=$(config_n_get @global[0] remote_dns_client_ip)
++			if ! smartdns_service_ready; then
++				echolog "  * 主 SmartDNS 未安装、未启用或配置目录不存在，PassWall 启动中止！"
++				return 1
++			fi
++			if ! mkdir -p "${smartdns_config%/*}"; then
++				echolog "  * SmartDNS 临时配置目录创建失败，PassWall 启动中止！"
++				return 1
++			fi
+ 			echolog "  - SmartDNS(127.0.0.1#${smartdns_listen_port})，直连 DNS：${SMARTDNS_DIRECT_DNS} -> 分组(direct)"
+ 			[ "${SMARTDNS_LOCAL_PORT:-0}" != "0" ] && echolog "  - SmartDNS 直连入口：${LOCAL_DNS} -> 分组(direct)"
+ 
+@@ -1306,7 +1333,7 @@
+ 				echolog "  * SmartDNS 配置生成失败！"
+ 				return 1
+ 			}
+-			restart_smartdns
++			restart_smartdns || return 1
+ 			china_ng_listen="127.0.0.1#${smartdns_listen_port},::1#${smartdns_listen_port}"
+ 			USE_DEFAULT_DNS="chinadns_ng"
+ 		else
+--- a/luasrc/controller/passwall.lua
++++ b/luasrc/controller/passwall.lua
+@@ -342,8 +342,19 @@
+ 	local e = {}
+ 	local dns_shunt = uci_get("@global[0]", "dns_shunt") or "dnsmasq"
+ 	if dns_shunt == "smartdns" then
+-		local config_file = api.TMP_PATH .. "/acl/default/smartdns.conf"
+-		e.dns_mode_status = luci.sys.call("/bin/busybox top -bn1 | grep -v 'grep' | grep -F %s | grep 'smartdns' >/dev/null" % util.shellquote(config_file)) == 0
++		local config_file = "/tmp/etc/smartdns/passwall.conf"
++		local custom_conf = "/etc/smartdns/custom.conf"
++		local conf_line = "conf-file " .. config_file
++		local conf_loaded = fs.access(config_file) and fs.access(custom_conf)
++		if conf_loaded then
++			conf_loaded = luci.sys.call(string.format(
++				"grep -F -x %s %s >/dev/null",
++				util.shellquote(conf_line),
++				util.shellquote(custom_conf)
++			)) == 0
++		end
++		local smartdns_running = luci.sys.call("/bin/busybox top -bn1 | grep -v 'grep' | grep -E '/usr/(sbin|bin)/smartdns([[:space:]]|$)' >/dev/null") == 0
++		e.dns_mode_status = conf_loaded and smartdns_running
+ 	elseif dns_shunt == "chinadns-ng" then
+ 		e.dns_mode_status = luci.sys.call("/bin/busybox top -bn1 | grep -v 'grep' | grep '%s/bin/' | grep 'default' | grep 'chinadns_ng' >/dev/null" % api.TMP_PATH) == 0
+ 	else

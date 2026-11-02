@@ -1,0 +1,228 @@
+--- a/root/usr/share/passwall/app.sh
++++ b/root/usr/share/passwall/app.sh
+@@ -1068,6 +1068,22 @@ stop_crontab() {
+ 	#echolog "清除定时执行命令。"
+ }
+ 
++restart_smartdns() {
++	rm -rf /tmp/smartdns.cache
++	[ -x /etc/init.d/smartdns ] && /etc/init.d/smartdns reload >/dev/null 2>&1
++}
++
++del_smartdns_conf() {
++	local smartdns_conf="/tmp/etc/smartdns/passwall.conf"
++	local custom_conf="/etc/smartdns/custom.conf"
++	rm -f "$smartdns_conf"
++	if [ -f "$custom_conf" ]; then
++		sed -i "\|^conf-file ${smartdns_conf}$|d" "$custom_conf"
++	fi
++	rm -rf /tmp/smartdns.cache
++	[ -x /etc/init.d/smartdns ] && /etc/init.d/smartdns reload >/dev/null 2>&1
++}
++
+ get_direct_dns_mode() {
+ 	# SmartDNS 使用独立直连列表，其余 DNS 分流模式继续读取原来的设置。
+ 	if [ "$ENABLED_DEFAULT_ACL" = "1" ] && [ "$DNS_SHUNT" = "smartdns" ]; then
+@@ -1271,34 +1287,26 @@ start_dns() {
+ 				smartdns_remote_dns="tcp://1.1.1.1"
+ 			fi
+ 			local smartdns_default_dns=$(config_n_get @global[0] smartdns_default_dns direct)
+-			local smartdns_listen_port=$(get_new_port "$(expr $NEXT_DNS_LISTEN_PORT + 1)")
+-			[ -n "$smartdns_listen_port" ] || {
+-				echolog "  * SmartDNS 无法获取可用的 DNS 监听端口！"
+-				return 1
+-			}
+-			local smartdns_config="${GLOBAL_ACL_PATH}/smartdns.conf"
++			local smartdns_listen_port=$(uci -q get smartdns.@smartdns[0].port 2>/dev/null)
++			case "$smartdns_listen_port" in
++				''|*[!0-9]*) smartdns_listen_port=53 ;;
++			esac
++			local smartdns_config="/tmp/etc/smartdns/passwall.conf"
+ 			local subnet_ip=$(config_n_get @global[0] remote_dns_client_ip)
+ 			echolog "  - SmartDNS(127.0.0.1#${smartdns_listen_port})，直连 DNS：${SMARTDNS_DIRECT_DNS} -> 分组(direct)"
+ 			[ "${SMARTDNS_LOCAL_PORT:-0}" != "0" ] && echolog "  - SmartDNS 直连入口：${LOCAL_DNS} -> 分组(direct)"
+ 
+ 			lua "$APP_PATH/helper_smartdns_add.lua" -FLAG "default" \
+-				-LISTEN_PORT "$smartdns_listen_port" -DIRECT_DNS "$SMARTDNS_DIRECT_DNS" -LOCAL_PORT "${SMARTDNS_LOCAL_PORT:-0}" -DNS_REDIRECT "${DNS_REDIRECT}" \
++				-SMARTDNS_CONF "$smartdns_config" -LISTEN_PORT "$smartdns_listen_port" -DIRECT_DNS "$SMARTDNS_DIRECT_DNS" -LOCAL_PORT "${SMARTDNS_LOCAL_PORT:-0}" -DNS_REDIRECT "${DNS_REDIRECT}" \
+ 				-REMOTE_PROXY_SERVER "${GLOBAL_SOCKS_server}" -USE_DEFAULT_DNS "${smartdns_default_dns}" \
+ 				-REMOTE_DNS "${smartdns_remote_dns}" -DNS_MODE "${DNS_MODE:-socks}" -TUN_DNS "${TUN_DNS}" \
+ 				-USE_DIRECT_LIST "${USE_DIRECT_LIST}" -USE_PROXY_LIST "${USE_PROXY_LIST}" -USE_BLOCK_LIST "${USE_BLOCK_LIST}" -USE_GFW_LIST "${USE_GFW_LIST}" -CHN_LIST "${CHN_LIST}" \
+ 				-NODE "${NODE}" -DEFAULT_PROXY_MODE "${TCP_PROXY_MODE}" -NO_PROXY_IPV6 "${FILTER_PROXY_IPV6:-0}" -NFTFLAG "${nftflag:-0}" \
+-				-SUBNET "${subnet_ip:-0}" -NO_LOGIC_LOG "${NO_LOGIC_LOG:-0}" \
+-				-LOG "$(config_n_get @global[0] log_smartdns 0)" \
+-				-LOG_LEVEL "$(config_n_get @global[0] smartdns_log_level error)" \
+-				-LOG_SIZE "$(config_n_get @global[0] smartdns_log_size 1)" \
+-				-UI "$(config_n_get @global[0] smartdns_ui 0)" \
+-				-UI_PORT "$(config_n_get @global[0] smartdns_ui_port 9880)" \
+-				-UI_DATA_DIR "$(config_n_get @global[0] smartdns_ui_data_dir "$TMP_PATH2/smartdns")" \
+-				-UI_LOG_MAX_AGE "$(config_n_get @global[0] smartdns_ui_log_max_age 7)" || {
++				-SUBNET "${subnet_ip:-0}" -NO_LOGIC_LOG "${NO_LOGIC_LOG:-0}" || {
+ 				echolog "  * SmartDNS 配置生成失败！"
+ 				return 1
+ 			}
+-			ln_run "$smartdns_bin" smartdns "/dev/null" -f -c "$smartdns_config" -p "${GLOBAL_ACL_PATH}/smartdns.pid"
++			restart_smartdns
+ 			china_ng_listen="127.0.0.1#${smartdns_listen_port},::1#${smartdns_listen_port}"
+ 			USE_DEFAULT_DNS="chinadns_ng"
+ 		else
+@@ -1800,6 +1808,7 @@ stop() {
+ 	unset XRAY_LOCATION_ASSET
+ 	unset SS_SYSTEM_DNS_RESOLVER_FORCE_BUILTIN
+ 	stop_crontab "$1"
++	del_smartdns_conf
+ 	rm -rf $GLOBAL_DNSMASQ_CONF
+ 	rm -rf $GLOBAL_DNSMASQ_CONF_PATH
+ 	[ "1" = "1" ] && {
+--- a/root/usr/share/passwall/helper_smartdns_add.lua
++++ b/root/usr/share/passwall/helper_smartdns_add.lua
+@@ -2,6 +2,7 @@ local api = require "luci.passwall.api"
+ 
+ local var = api.get_args(arg)
+ local FLAG = var["-FLAG"]
++local SMARTDNS_CONF = var["-SMARTDNS_CONF"] or "/tmp/etc/smartdns/passwall.conf"
+ local DIRECT_DNS = var["-DIRECT_DNS"]
+ local LOCAL_PORT = tonumber(var["-LOCAL_PORT"]) or 0
+ local REMOTE_PROXY_SERVER = var["-REMOTE_PROXY_SERVER"]
+@@ -22,13 +23,6 @@ local NFTFLAG = var["-NFTFLAG"]
+ local SUBNET = var["-SUBNET"]
+ local LISTEN_PORT = var["-LISTEN_PORT"]
+ local DNS_REDIRECT = var["-DNS_REDIRECT"] == "1"
+-local LOG = var["-LOG"] == "1"
+-local LOG_LEVEL = var["-LOG_LEVEL"] or "error"
+-local LOG_SIZE = tonumber(var["-LOG_SIZE"]) or 1
+-local UI = var["-UI"] == "1"
+-local UI_PORT = tonumber(var["-UI_PORT"]) or 9880
+-local UI_DATA_DIR = var["-UI_DATA_DIR"]
+-local UI_LOG_MAX_AGE = tonumber(var["-UI_LOG_MAX_AGE"]) or 7
+ 
+ local sys = api.sys
+ local fs = api.fs
+@@ -40,7 +34,6 @@ local USER_RULES_PATH = "/etc/passwall/rules"
+ local CACHE_RULES_PATH = api.CACHE_PATH .. "/user_rules"
+ local FLAG_PATH = TMP_PATH .. "/acl/" .. FLAG
+ local TMP_CONF_FILE = FLAG_PATH .. "/smartdns.conf"
+-local SMARTDNS_DATA_PATH = api.CACHE_PATH .. "/smartdns"
+ local config_lines = {}
+ local tmp_lines = {}
+ local USE_GEOVIEW = api.uci_get_c("@global_rules[0]", "enable_geoview")
+@@ -115,21 +108,6 @@ end
+ 
+ sys.call("mkdir -p %s" % FLAG_PATH)
+ sys.call("mkdir -p %s" % CACHE_RULES_PATH)
+-sys.call("mkdir -p " .. api.util.shellquote(SMARTDNS_DATA_PATH))
+-
+-local LOG_LEVELS = {off = true, fatal = true, error = true, warn = true, notice = true, info = true, debug = true}
+-if not LOG_LEVELS[LOG_LEVEL] then LOG_LEVEL = "error" end
+-if LOG_SIZE < 1 or LOG_SIZE % 1 ~= 0 then LOG_SIZE = 1 end
+-if UI_PORT < 1 or UI_PORT > 65535 or UI_PORT % 1 ~= 0 then UI_PORT = 9880 end
+-if UI_LOG_MAX_AGE < 1 or UI_LOG_MAX_AGE % 1 ~= 0 then UI_LOG_MAX_AGE = 7 end
+-if not UI_DATA_DIR or UI_DATA_DIR == "" then UI_DATA_DIR = SMARTDNS_DATA_PATH end
+-local UI_PLUGIN = "/usr/lib/smartdns_ui.so"
+-if not fs.access(UI_PLUGIN) then UI_PLUGIN = "/usr/lib/smartdns/smartdns_ui.so" end
+-local ENABLE_UI = UI and fs.access(UI_PLUGIN)
+-local data_dir = ENABLE_UI and UI_DATA_DIR or SMARTDNS_DATA_PATH
+-if data_dir ~= SMARTDNS_DATA_PATH then
+-	sys.call("mkdir -p " .. api.util.shellquote(data_dir))
+-end
+ 
+ -- 统一生成直连、远程上游，协议和默认端口由 SmartDNS 根据 URL 识别。
+ local function make_server_param(endpoint)
+@@ -189,57 +167,13 @@ end
+ local force_https_soa = api.uci_get_c("@global[0]", "force_https_soa") or 0
+ local force_qtype_soa = tonumber(force_https_soa) == 1 and "force-qtype-SOA 65" or "force-qtype-SOA -,65"
+ local proxy_server_name = "psw-proxy-server"
+-local listen_address = "[::]:" .. LISTEN_PORT .. (DNS_REDIRECT and "" or "@lo")
+-local local_domain = DNS_REDIRECT and api.uci_get("dhcp", "@dnsmasq[0]", "domain")
+ config_lines = {
+-	tonumber(LISTEN_PORT) ~= 0 and ("bind " .. listen_address) or "",
+-	tonumber(LISTEN_PORT) ~= 0 and ("bind-tcp " .. listen_address) or "",
+ 	LOCAL_PORT > 0 and ("bind [::]:" .. LOCAL_PORT .. "@lo -group direct -no-rules") or "",
+ 	LOCAL_PORT > 0 and ("bind-tcp [::]:" .. LOCAL_PORT .. "@lo -group direct -no-rules") or "",
+ 	AUTO_DIRECT_PORT > 0 and ("bind [::]:" .. AUTO_DIRECT_PORT .. "@lo -group auto-direct") or "",
+-	"log-level " .. LOG_LEVEL,
+-	"log-num " .. (LOG and "1" or "0"),
+-	LOG and string.format("log-file %q", FLAG_PATH .. "/smartdns.log") or "",
+-	LOG and ("log-size " .. LOG_SIZE .. "M") or "",
+-	string.format("cache-file %q", SMARTDNS_DATA_PATH .. "/smartdns.cache"),
+-	string.format("data-dir %q", data_dir),
+ 	"server 223.5.5.5 -bootstrap-dns -set-mark 255",
+-	-- Set the suffix before loading hosts/leases so initial records are expanded too.
+-	(local_domain and local_domain ~= "") and "local-domain " .. local_domain or "",
+-	DNS_REDIRECT and "hosts-file /tmp/hosts/*" or "",
+-	is_file_nonzero("/etc/hosts") and "hosts-file /etc/hosts" or "",
+ 	DNS_MODE == "socks" and string.format("proxy-server socks5://%s -name %s", REMOTE_PROXY_SERVER, proxy_server_name) or ""
+ }
+-if ENABLE_UI then
+-	merge_array(config_lines, {
+-		"plugin " .. UI_PLUGIN,
+-		"smartdns-ui.www-root /usr/share/smartdns/wwwroot",
+-		"smartdns-ui.ip http://[::]:" .. UI_PORT,
+-		"smartdns-ui.max-query-log-age " .. (UI_LOG_MAX_AGE * 86400)
+-	})
+-end
+-if DNS_REDIRECT then
+-	local hosts = {}
+-	api.uci:foreach("dhcp", "host", function(s)
+-		if datatypes.hostname(s.name or "") and datatypes.ip4addr(s.ip or "") then
+-			hosts[#hosts + 1] = s.ip .. " " .. s.name
+-		end
+-	end)
+-
+-	local hosts_file = FLAG_PATH .. "/dhcp-static-hosts"
+-	if fs.writefile(hosts_file, table.concat(hosts, "\n") .. "\n") and #hosts > 0 then
+-		table.insert(config_lines, string.format("hosts-file %q", hosts_file))
+-	end
+-
+-	-- SmartDNS monitors the lease file and updates local records without a restart.
+-	local lease_file = api.uci_get("dhcp", "@dnsmasq[0]", "leasefile")
+-	if not lease_file or lease_file == "" then lease_file = "/tmp/dhcp.leases" end
+-	table.insert(config_lines, string.format("dnsmasq-lease-file %q", lease_file))
+-	local odhcpd_lease = api.uci_get("dhcp", "odhcpd", "leasefile")
+-	if odhcpd_lease and odhcpd_lease ~= "" then
+-		table.insert(config_lines, string.format("odhcpd-lease-file %q", odhcpd_lease))
+-	end
+-end
+ for _, server_param in ipairs(DIRECT_SERVERS) do
+ 	table.insert(config_lines, server_param .. " -group direct -exclude-default-group")
+ end
+@@ -805,8 +739,37 @@ if DEFAULT_DNS_GROUP then
+ 	log(string.format("  - 默认 DNS 分组：%s", DEFAULT_DNS_GROUP == AUTO_GROUP and "自动" or DEFAULT_DNS_GROUP))
+ end
+ 
++local conf_line = "conf-file " .. SMARTDNS_CONF
++local custom_conf = "/etc/smartdns/custom.conf"
++local conf_exists = false
++local f_in = io.open(custom_conf, "r")
++if f_in then
++	for line in f_in:lines() do
++		if api.trim(line) == conf_line then
++			conf_exists = true
++			break
++		end
++	end
++	f_in:close()
++end
++
++api.remove(SMARTDNS_CONF)
++if not fs.symlink(TMP_CONF_FILE, SMARTDNS_CONF) then
++	log("  * SmartDNS 配置链接创建失败！")
++	os.exit(1)
++end
++if not conf_exists then
++	local f_out = io.open(custom_conf, "a")
++	if not f_out then
++		log("  * SmartDNS custom.conf 写入失败！")
++		os.exit(1)
++	end
++	f_out:write(conf_line .. "\n")
++	f_out:close()
++end
++
+ if DNS_REDIRECT then
+-	log("  - DNS 重定向直接使用 SmartDNS，DHCP 租约由 SmartDNS 自动加载。")
++	log("  - DNS 重定向直接使用主 SmartDNS，DHCP 租约由主 SmartDNS 配置管理。")
+ else
+-	log("  - SmartDNS已作为Dnsmasq上游，如果你自行配置了错误的DNS流程，将会导致域名(直连/代理)分流失效！！！")
++	log("  - 主 SmartDNS 已作为 Dnsmasq 上游，PassWall 规则已注入 custom.conf。")
+ end
