@@ -2,12 +2,11 @@
 # target、kernel 与 base system 源码修正。
 
 fix_default_set() {
-    # 注入默认主题、系统设置和目标平台通用补丁。
+    # 替换默认主题依赖，并注入系统设置和目标平台通用补丁。
     if [ -d "$BUILD_DIR/feeds/luci/collections/" ]; then
         find "$BUILD_DIR/feeds/luci/collections/" -type f -name "Makefile" -exec sed -i "s/luci-theme-bootstrap/luci-theme-$THEME_SET/g" {} \;
     fi
 
-    install -Dm544 "$BASE_PATH/patches/990_set_argon_primary" "$BUILD_DIR/package/base-files/files/etc/uci-defaults/990_set_argon_primary"
     install -Dm544 "$BASE_PATH/patches/991_custom_settings" "$BUILD_DIR/package/base-files/files/etc/uci-defaults/991_custom_settings"
     install -Dm544 "$BASE_PATH/patches/992_set-wifi-uci.sh" "$BUILD_DIR/package/base-files/files/etc/uci-defaults/992_set-wifi-uci.sh"
 
@@ -22,8 +21,20 @@ fix_default_set() {
 fix_miniupnpd() {
     local miniupnpd_dir="$BUILD_DIR/feeds/packages/net/miniupnpd"
     local patch_file="999-chanage-default-leaseduration.patch"
+    local upstream_repo="https://github.com/immortalwrt/packages.git"
+    local upstream_branch="openwrt-25.12"
 
     if [ -d "$miniupnpd_dir" ] && [ -f "$BASE_PATH/patches/$patch_file" ]; then
+        if ! sync_sparse_packages_to_feed_dir \
+            "$upstream_repo" \
+            "$upstream_branch" \
+            "$BUILD_DIR/feeds/packages" \
+            "immortalwrt/packages" \
+            "net/miniupnpd"; then
+            echo "错误：同步 miniupnpd 到 $upstream_branch 分支失败" >&2
+            return 1
+        fi
+
         install -Dm644 "$BASE_PATH/patches/$patch_file" "$miniupnpd_dir/patches/$patch_file"
     fi
 }

@@ -41,4 +41,5 @@ update_feeds() {
 install_feeds() {
     network_retry ./scripts/feeds update -i
     ./scripts/feeds install -a -f
+    ./scripts/feeds install -f luci-theme-vantage luci-app-vantage
 }

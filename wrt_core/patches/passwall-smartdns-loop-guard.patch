@@ -1,0 +1,76 @@
+--- a/root/usr/share/passwall/app.sh
++++ b/root/usr/share/passwall/app.sh
+@@ -1090,6 +1090,19 @@
+ 	fi
+ }
+ 
++smartdns_is_loopback_endpoint() {
++	local endpoint="${1%%,*}"
++	local port="$2"
++	case "$endpoint" in
++		*://*) endpoint="${endpoint#*://}" ;;
++	esac
++	case "$endpoint" in
++		127.0.0.1|localhost|::1|\[::1\]) [ "$port" = "53" ] && return 0 ;;
++		127.0.0.1#"$port"|127.0.0.1:"$port"|localhost#"$port"|localhost:"$port"|::1#"$port"|::1:"$port"|\[::1\]#"$port"|\[::1\]:"$port") return 0 ;;
++	esac
++	return 1
++}
++
+ del_smartdns_conf() {
+ 	local smartdns_conf="/tmp/etc/smartdns/passwall.conf"
+ 	local custom_conf="/etc/smartdns/custom.conf"
+@@ -1320,11 +1333,51 @@
+ 				echolog "  * SmartDNS 临时配置目录创建失败，PassWall 启动中止！"
+ 				return 1
+ 			fi
+-			echolog "  - SmartDNS(127.0.0.1#${smartdns_listen_port})，直连 DNS：${SMARTDNS_DIRECT_DNS} -> 分组(direct)"
++			local smartdns_direct_dns="${SMARTDNS_DIRECT_DNS}"
++			local smartdns_filtered_dns=""
++			local smartdns_endpoint
++			local smartdns_loopback=0
++			local smartdns_old_ifs="$IFS"
++			IFS='|'
++			for smartdns_endpoint in $smartdns_direct_dns; do
++				if smartdns_is_loopback_endpoint "$smartdns_endpoint" "$smartdns_listen_port"; then
++					smartdns_loopback=1
++					continue
++				fi
++				smartdns_filtered_dns="${smartdns_filtered_dns:+${smartdns_filtered_dns}|}${smartdns_endpoint}"
++			done
++			IFS="$smartdns_old_ifs"
++			if [ "$smartdns_loopback" = "1" ]; then
++				if [ -n "$smartdns_filtered_dns" ]; then
++					smartdns_direct_dns="$smartdns_filtered_dns"
++				else
++					smartdns_direct_dns=$(awk '
++						function with_scheme(scheme, endpoint) {
++							return endpoint ~ /^[[:alnum:]_.+-]+:\/\// ? endpoint : scheme "://" endpoint
++						}
++						$1 == "server" { print $2; next }
++						$1 == "server-tcp" { print with_scheme("tcp", $2); next }
++						$1 == "server-tls" { print with_scheme("tls", $2); next }
++						$1 == "server-https" { print with_scheme("https", $2); next }
++						$1 == "server-quic" { print with_scheme("quic", $2); next }
++						$1 == "server-h3" { print with_scheme("h3", $2); next }
++					' /var/etc/smartdns/smartdns.conf 2>/dev/null | while IFS= read -r smartdns_endpoint; do
++						if ! smartdns_is_loopback_endpoint "$smartdns_endpoint" "$smartdns_listen_port"; then
++							printf '%s\n' "$smartdns_endpoint"
++							break
++						fi
++					done)
++					if [ -z "$smartdns_direct_dns" ]; then
++						echolog "  * 主 SmartDNS 未找到可用直连上游，PassWall 启动中止！"
++						return 1
++					fi
++				fi
++			fi
++			echolog "  - SmartDNS(127.0.0.1#${smartdns_listen_port})，直连 DNS：${smartdns_direct_dns} -> 分组(direct)"
+ 			[ "${SMARTDNS_LOCAL_PORT:-0}" != "0" ] && echolog "  - SmartDNS 直连入口：${LOCAL_DNS} -> 分组(direct)"
+ 
+ 			lua "$APP_PATH/helper_smartdns_add.lua" -FLAG "default" \
+-				-SMARTDNS_CONF "$smartdns_config" -LISTEN_PORT "$smartdns_listen_port" -DIRECT_DNS "$SMARTDNS_DIRECT_DNS" -LOCAL_PORT "${SMARTDNS_LOCAL_PORT:-0}" -DNS_REDIRECT "${DNS_REDIRECT}" \
++				-SMARTDNS_CONF "$smartdns_config" -LISTEN_PORT "$smartdns_listen_port" -DIRECT_DNS "$smartdns_direct_dns" -LOCAL_PORT "${SMARTDNS_LOCAL_PORT:-0}" -DNS_REDIRECT "${DNS_REDIRECT}" \
+ 				-REMOTE_PROXY_SERVER "${GLOBAL_SOCKS_server}" -USE_DEFAULT_DNS "${smartdns_default_dns}" \
+ 				-REMOTE_DNS "${smartdns_remote_dns}" -DNS_MODE "${DNS_MODE:-socks}" -TUN_DNS "${TUN_DNS}" \
+ 				-USE_DIRECT_LIST "${USE_DIRECT_LIST}" -USE_PROXY_LIST "${USE_PROXY_LIST}" -USE_BLOCK_LIST "${USE_BLOCK_LIST}" -USE_GFW_LIST "${USE_GFW_LIST}" -CHN_LIST "${CHN_LIST}" \
