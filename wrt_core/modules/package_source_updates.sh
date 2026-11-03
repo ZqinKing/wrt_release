@@ -238,25 +238,44 @@ add_quickfile() {
 }
 
 
-update_argon() {
-    local repo_url="https://github.com/ZqinKing/luci-theme-argon.git"
-    local dst_theme_path="$BUILD_DIR/feeds/luci/themes/luci-theme-argon"
+update_vantage() {
+    local repo_url="https://github.com/anothaDev/luci-theme-vantage.git"
+    local dst_theme_path="$BUILD_DIR/feeds/luci/themes/luci-theme-vantage"
+    local dst_app_path="$BUILD_DIR/feeds/luci/applications/luci-app-vantage"
     local tmp_dir
+    local commit_hash
     tmp_dir=$(mktemp -d)
 
-    echo "正在更新 argon 主题..."
+    echo "正在更新 Vantage 主题和 dashboard..."
 
     if ! git_retry clone --depth 1 "$repo_url" "$tmp_dir"; then
-        echo "错误：从 $repo_url 克隆 argon 主题仓库失败" >&2
+        echo "错误：从 $repo_url 克隆 Vantage 仓库失败" >&2
         rm -rf "$tmp_dir"
         exit 1
     fi
 
-    rm -rf "$dst_theme_path"
-    rm -rf "$tmp_dir/.git"
-    mv "$tmp_dir" "$dst_theme_path"
+    if [ ! -f "$tmp_dir/luci-theme-vantage/Makefile" ] || [ ! -f "$tmp_dir/luci-app-vantage/Makefile" ]; then
+        echo "错误：Vantage 仓库缺少预期的主题或 dashboard 包目录" >&2
+        rm -rf "$tmp_dir"
+        exit 1
+    fi
 
-    echo "luci-theme-argon 更新完成"
+    commit_hash=$(git -C "$tmp_dir" rev-parse HEAD)
+    echo "Vantage 最新提交: $commit_hash"
+
+    if [ -d "$BUILD_DIR/feeds/luci/themes" ]; then
+        find "$BUILD_DIR/feeds/luci/themes" -mindepth 1 -maxdepth 1 ! -name "luci-theme-vantage" -exec rm -rf -- {} +
+    fi
+    if [ -d "$BUILD_DIR/package/feeds/luci" ]; then
+        find "$BUILD_DIR/package/feeds/luci" -mindepth 1 -maxdepth 1 -name "luci-theme-*" ! -name "luci-theme-vantage" -exec rm -rf -- {} +
+    fi
+    rm -rf "$dst_theme_path" "$dst_app_path"
+    mkdir -p "$BUILD_DIR/feeds/luci/themes" "$BUILD_DIR/feeds/luci/applications"
+    mv "$tmp_dir/luci-theme-vantage" "$dst_theme_path"
+    mv "$tmp_dir/luci-app-vantage" "$dst_app_path"
+    rm -rf "$tmp_dir"
+
+    echo "Vantage 主题和 dashboard 更新完成"
 }
 
 
