@@ -144,8 +144,16 @@ https://github.com/kenzok8/small-package.git
 
 ## 9. OAF（应用过滤）功能使用说明
 
-使用 OAF（应用过滤）功能前，需先完成以下操作：
+当前固件默认禁用 OAF（应用过滤）功能，目的是规避 OAF 驱动可能对网络栈产生的影响。需要使用 OAF 的用户，请确认能够接受启用后的潜在影响。
 
-1. 打开系统设置 → 启动项 → 定位到「appfilter」
-2. 将「appfilter」当前状态从已禁用更改为已启用
-3. 完成配置后，点击启动按钮激活服务
+新版本更新后，首次启用 OAF 需要进入命令行模式（SSH 或串口）执行：
+
+```sh
+cd /etc/init.d/
+./appfilter start
+uci set fwx.record.enable=1
+uci commit fwx
+./appfilter start
+```
+
+命令执行完成后，OAF 即完成首次初始化并启动。
