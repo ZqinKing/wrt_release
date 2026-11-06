@@ -72,7 +72,7 @@ GitHub Actions 的手动构建也提供 `add_fragments` 与 `remove_fragments` �
 | 京东云 | 百里 / AX6000 | `jdcloud_ax6000_immwrt` |
 | 阿里云 | AP8220 | `aliyun_ap8220_immwrt` |
 | 阿里云 | AP8220 - LiBwrt | `aliyun_ap8220_libwrt` |
-| Linksys | MX4200v1、MX4200v2、MX4300 | `linksys_mx4x00_immwrt` |
+| Linksys | MX4200v1、MX4200v2、MX4300 | `linksys_mx4x00_libwrt` |
 | Link | NN6000v2 | `link_nn6000v2_immwrt` |
 | 奇虎 | 360v6 | `qihoo_360v6_immwrt` |
 | 红米 | AX5 | `redmi_ax5_immwrt` |

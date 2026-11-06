@@ -123,9 +123,9 @@ qihoo_360v6_wifi_cfg() {
 }
 
 linksys_mx4x00_wifi_cfg() {
-	configure_wifi 0 1 HE20 22 'Linksys_MX4X00' '12345678'
-	configure_wifi 1 149 HE80 21 'Linksys_MX4X00_5G1' '12345678'
-	configure_wifi 2 44 HE80 21 'Linksys_MX4X00_5G2' '12345678'
+	configure_wifi 0 44 HE80 22 'Linksys_MX4X00_5G1' '12345678'
+	configure_wifi 1 1 HE20 21 'Linksys_MX4X00' '12345678'
+	configure_wifi 2 149 HE80 21 'Linksys_MX4X00_5G2' '12345678'
 }
 
 gemtek_w1701k_wifi_cfg() {
@@ -168,7 +168,8 @@ qihoo,360v6)
 	;;
 linksys,mx4200v1 | \
 	linksys,mx4200v2 | \
-	linksys,mx4300)
+	linksys,mx4300 | \
+	linksys,homewrk)
 	linksys_mx4x00_wifi_cfg
 	;;
 gemtek,w1701k-ubi)
