@@ -79,6 +79,7 @@ GitHub Actions 的手动构建也提供 `add_fragments` 与 `remove_fragments` �
 | 红米 | AX6 | `redmi_ax6_immwrt` |
 | 红米 | AX6 - LiBwrt | `redmi_ax6_libwrt` |
 | CMCC（中国移动） | RAX3000M | `cmcc_rax3000m_immwrt` |
+| Cudy | TR3000 | `cudy_tr3000_immwrt` |
 | 斐讯 | N1 | `n1_immwrt` |
 | 兆能 | M2 | `zn_m2_immwrt` |
 | 兆能 | M2 - LiBwrt | `zn_m2_libwrt` |
