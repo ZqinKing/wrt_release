@@ -1,12 +1,12 @@
 #!/bin/sh
 
-# 检查当前nf_conntrack_max值是否小于65536，若更小则修改
+# 检查当前nf_conntrack_max值是否小于262144，若更小则修改
 current_value=$(sysctl -n net.netfilter.nf_conntrack_max)
-if [ "$current_value" -lt 65535 ]; then
+if [ "$current_value" -lt 262144 ]; then
     # 从sysctl.conf删除旧的nf_conntrack_max配置以避免重复
     sed -i '/nf_conntrack_max/d' /etc/sysctl.conf
-    # 写入新配置，设置最大连接数为65535
-    echo "net.netfilter.nf_conntrack_max = 65535" >>/etc/sysctl.conf
+    # 写入新配置，设置最大连接数为262144
+    echo "net.netfilter.nf_conntrack_max = 262144" >>/etc/sysctl.conf
     # 应用配置并立即生效
     sysctl -p
 fi
