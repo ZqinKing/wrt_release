@@ -28,7 +28,7 @@ FEEDS_CONF="feeds.conf.default"
 GOLANG_REPO="https://github.com/sbwml/packages_lang_golang"
 GOLANG_BRANCH="27.x"
 THEME_SET="vantage"
-LAN_ADDR="192.168.1.1"
+LAN_ADDR="192.168.21.1"
 
 
 # 按静态职责加载模块，执行顺序仍由本脚本统一控制。
@@ -81,6 +81,7 @@ stage_pre_install_source_fixes() {
     fix_miniupnpd
     update_golang
     change_dnsmasq2full
+    install_dnsmasq_netcontrol_patch
     fix_mk_def_depends
 
     update_default_lan_addr
