@@ -254,8 +254,11 @@ update_vantage() {
         exit 1
     fi
 
-    if [ ! -f "$tmp_dir/luci-theme-vantage/Makefile" ] || [ ! -f "$tmp_dir/luci-app-vantage/Makefile" ]; then
-        echo "错误：Vantage 仓库缺少预期的主题或 dashboard 包目录" >&2
+    if [ ! -f "$tmp_dir/luci-theme-vantage/Makefile" ] ||
+       [ ! -f "$tmp_dir/luci-app-vantage/Makefile" ] ||
+       [ ! -f "$tmp_dir/luci-theme-vantage/htdocs/luci-static/vantage/vantage.css" ] ||
+       [ ! -d "$tmp_dir/luci-theme-vantage/ucode/template/themes/vantage" ]; then
+        echo "错误：Vantage 仓库缺少预期的主题、运行时资源或 dashboard 包目录" >&2
         rm -rf "$tmp_dir"
         exit 1
     fi
@@ -274,6 +277,14 @@ update_vantage() {
     mv "$tmp_dir/luci-theme-vantage" "$dst_theme_path"
     mv "$tmp_dir/luci-app-vantage" "$dst_app_path"
     rm -rf "$tmp_dir"
+
+    local compatibility_patch="$BASE_PATH/patches/luci-theme-vantage-bootstrap-migration.patch"
+    local boot_script_dir="$BUILD_DIR/package/base-files/files"
+    if ! patch --batch --forward --fuzz=0 --dry-run -d "$boot_script_dir" -p1 < "$compatibility_patch" ||
+       ! patch --batch --forward --fuzz=0 -d "$boot_script_dir" -p1 < "$compatibility_patch"; then
+        echo "错误：无法应用 LuCI 主题配置迁移补丁" >&2
+        return 1
+    fi
 
     echo "Vantage 主题和 dashboard 更新完成"
 }
