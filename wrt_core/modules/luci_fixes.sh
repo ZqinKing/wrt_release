@@ -36,3 +36,14 @@ update_nginx_ubus_module() {
         echo "错误：未找到 $makefile_path 文件，无法更新 nginx-mod-ubus 模块。" >&2
     fi
 }
+
+fix_luci_theme_pointer() {
+    # 注入开机主题守卫：主题包自带的 uci-defaults 只在首次启动改写
+    # mediaurlbase，sysupgrade 保留配置后不再重跑，指针可能停在镜像里
+    # 已不存在的主题（luci-base 出厂默认 /luci-static/bootstrap）上，
+    # 表现为首页白屏、无样式或 "Error loading theme"。每次开机自愈。
+    local src="$BASE_PATH/patches/luci-theme-guard"
+    local dst="$BUILD_DIR/package/base-files/files/etc/init.d/luci-theme-guard"
+    [ -f "$src" ] || return 0
+    install -Dm755 "$src" "$dst"
+}

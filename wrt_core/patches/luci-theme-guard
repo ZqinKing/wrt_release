@@ -1,0 +1,52 @@
+#!/bin/sh /etc/rc.common
+# luci-theme-guard: 开机校验 LuCI 主题指针，与服务端实际存在的主题对齐。
+#
+# 背景：luci-base 出厂 /etc/config/luci 的 mediaurlbase 固定为
+# /luci-static/bootstrap，实际使用哪个主题要等主题包自带的 uci-defaults
+# 首次启动时改写。而 uci-defaults 执行完会在 overlay 里留下 whiteout，
+# sysupgrade 勾选"保留配置"升级后不会再执行，配置里的指针就永久停在
+# 一个镜像里并不存在的主题上：首页 cascade.css 404、主题模板 include 失败。
+
+START=19
+
+theme_exists() {
+	local t="$1"
+	[ -n "$t" ] || return 1
+	[ -f "/www/luci-static/$t/css/cascade.css" ] &&
+		[ -d "/usr/share/ucode/luci/template/themes/$t" ]
+}
+
+pick_theme() {
+	local d
+	for d in /usr/share/ucode/luci/template/themes/*; do
+		[ -d "$d" ] || continue
+		d="${d##*/}"
+		theme_exists "$d" && { echo "$d"; return 0; }
+	done
+	return 1
+}
+
+apply_theme() {
+	local want="$1" disp
+	disp="$(echo "${want%"${want#?}"}" | tr 'a-z' 'A-Z')${want#?}"
+	uci -q set luci.main.mediaurlbase="/luci-static/$want"
+	uci -q set "luci.themes.$disp"="/luci-static/$want"
+	uci -q commit luci
+	rm -rf /tmp/luci-indexcache* 2>/dev/null
+	rm -rf /tmp/luci-sessions/* 2>/dev/null
+}
+
+boot() {
+	local base cur want
+	base="${1:-$(uci -q get luci.main.mediaurlbase)}"
+	[ -n "$base" ] || return 0
+	cur="${base##*/}"
+	theme_exists "$cur" && return 0
+
+	want="$(pick_theme)" || {
+		logger -t luci-theme-guard "no usable theme, keep $base"
+		return 0
+	}
+	logger -t luci-theme-guard "$base not present, switch to /luci-static/$want"
+	apply_theme "$want"
+}
