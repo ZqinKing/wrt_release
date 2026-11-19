@@ -245,7 +245,14 @@ EOF
 
 
 fix_rust_compile_error() {
-    if [ -f "$BUILD_DIR/feeds/packages/lang/rust/Makefile" ]; then
-        sed -i 's/download-ci-llvm=true/download-ci-llvm=false/g' "$BUILD_DIR/feeds/packages/lang/rust/Makefile"
+    local makefile="$BUILD_DIR/feeds/packages/lang/rust/Makefile"
+    if [ -f "$makefile" ]; then
+        # Rust CI artifacts expire. Build the matching LLVM and reuse OpenWrt's
+        # compiler cache when enabled, including on a fresh build tree in CI.
+        sed -i -E \
+            's/--set=llvm\.download-ci-llvm=(true|false)([[:blank:]]|$)/--set=llvm.download-ci-llvm=false\2/;
+             /--set=llvm\.download-ci-llvm=false/ {
+                 /--set=build\.ccache=/! s/--set=llvm\.download-ci-llvm=false/& $(if $(CONFIG_CCACHE),--set=build.ccache=true)/
+             }' "$makefile"
     fi
 }
