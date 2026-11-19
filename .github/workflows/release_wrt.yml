@@ -63,18 +63,11 @@ jobs:
           sudo -E apt-get clean || true
           df -hT
 
-      - name: Build System Setup
-        run: |
-          sudo bash -c 'bash <(curl -sL https://build-scripts.immortalwrt.org/init_build_environment.sh)'
-          sudo -E apt -yqq install dos2unix
-          sudo -E apt -yqq install libfuse-dev
-          sudo -E apt -yqq autoremove --purge
-          sudo -E apt -yqq autoclean
-          sudo -E apt -yqq clean
-          sudo -E systemctl daemon-reload
-
       - name: Checkout
         uses: actions/checkout@v7.0.0
+
+      - name: Build System Setup
+        run: sudo bash wrt_core/setup_ci_environment.sh
 
       - name: Set Build Date and Timezone
         env:
