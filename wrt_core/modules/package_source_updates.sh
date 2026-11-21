@@ -279,6 +279,10 @@ update_vantage() {
     rm -rf "$tmp_dir"
 
     local compatibility_patch="$BASE_PATH/patches/luci-theme-vantage-bootstrap-migration.patch"
+    if [[ "$REPO_URL" == "https://github.com/padavanonly/immortalwrt-mt798x-6.6.git" &&
+          "$REPO_BRANCH" == "openwrt-24.10-6.6" ]]; then
+        compatibility_patch="$BASE_PATH/patches/luci-theme-vantage-padavanonly-migration.patch"
+    fi
     local boot_script_dir="$BUILD_DIR/package/base-files/files"
     if ! patch --batch --forward --fuzz=0 --dry-run -d "$boot_script_dir" -p1 < "$compatibility_patch" ||
        ! patch --batch --forward --fuzz=0 -d "$boot_script_dir" -p1 < "$compatibility_patch"; then

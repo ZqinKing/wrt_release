@@ -1,0 +1,29 @@
+--- a/etc/init.d/boot
++++ b/etc/init.d/boot
+@@ -16,6 +16,21 @@
+ 	uci commit
+ }
+ 
++migrate_luci_theme() {
++	local mediaurlbase
++	mediaurlbase="$(uci -q get luci.main.mediaurlbase)"
++	[ "$mediaurlbase" = "/luci-static/bootstrap" ] || return 0
++	[ -f /www/luci-static/vantage/vantage.css ] || return 0
++	[ -d /usr/share/ucode/luci/template/themes/vantage ] || return 0
++	if [ -f /www/luci-static/bootstrap/css/cascade.css ] &&
++	   [ -d /usr/share/ucode/luci/template/themes/bootstrap ]; then
++		return 0
++	fi
++	uci -q set luci.themes.Vantage=/luci-static/vantage || return 1
++	uci -q set luci.main.mediaurlbase=/luci-static/vantage || return 1
++	uci -q commit luci || return 1
++}
++
+ boot() {
+ 	[ -f /proc/mounts ] || /sbin/mount_root
+	[ -f /proc/jffs2_bbc ] && echo "S" > /proc/jffs2_bbc
+@@ -60,3 +75,4 @@
++	migrate_luci_theme
+ 	# temporary hack until configd exists
+ 	/sbin/reload_config
+ }
