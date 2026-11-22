@@ -1,20 +1,8 @@
 #!/usr/bin/env bash
 # target、kernel 与 base system 源码修正。
 
-fix_default_set() {
-    # 替换默认主题依赖，并注入系统设置和目标平台通用补丁。
-    if [ -d "$BUILD_DIR/feeds/luci/collections/" ]; then
-        find "$BUILD_DIR/feeds/luci/collections/" -type f -name "Makefile" -exec sed -i "s/luci-theme-bootstrap/luci-theme-$THEME_SET/g" {} \;
-    fi
-
-    install -Dm544 "$BASE_PATH/patches/991_custom_settings" "$BUILD_DIR/package/base-files/files/etc/uci-defaults/991_custom_settings"
-    install -Dm544 "$BASE_PATH/patches/992_set-wifi-uci.sh" "$BUILD_DIR/package/base-files/files/etc/uci-defaults/992_set-wifi-uci.sh"
-
-    if [ -f "$BUILD_DIR/package/emortal/autocore/files/tempinfo" ]; then
-        if [ -f "$BASE_PATH/patches/tempinfo" ]; then
-            \cp -f "$BASE_PATH/patches/tempinfo" "$BUILD_DIR/package/emortal/autocore/files/tempinfo"
-        fi
-    fi
+is_vikingyfy_owrt_build() {
+    [[ "${REPO_URL:-}" == "https://github.com/VIKINGYFY/immortalwrt.git" && "${REPO_BRANCH:-}" == "owrt" ]]
 }
 
 
@@ -64,6 +52,20 @@ fix_kconfig_recursive_dependency() {
 }
 
 
+fix_nf_conntrack_bridge_package_split() {
+    local netfilter_map="$BUILD_DIR/include/netfilter.mk"
+    local netfilter_packages="$BUILD_DIR/package/kernel/linux/modules/netfilter.mk"
+    local duplicate_map='nf_add,NFT_BRIDGE,CONFIG_NF_CONNTRACK_BRIDGE,'
+
+    if [[ -f "$netfilter_map" && -f "$netfilter_packages" ]] &&
+        grep -Fq "define KernelPackage/nf-conntrack-bridge" "$netfilter_packages" &&
+        grep -Fq "$duplicate_map" "$netfilter_map"; then
+        sed -i '/nf_add,NFT_BRIDGE,CONFIG_NF_CONNTRACK_BRIDGE,/d' "$netfilter_map"
+        echo "已从 nft-bridge 分组移除重复的 nf_conntrack_bridge 模块映射。"
+    fi
+}
+
+
 update_default_lan_addr() {
     local CFG_PATH="$BUILD_DIR/package/base-files/files/bin/config_generate"
     if [ -f $CFG_PATH ]; then
@@ -101,6 +103,11 @@ remove_something_nss_kmod() {
 
 
 update_affinity_script() {
+    if is_vikingyfy_owrt_build; then
+        echo "保留 VIKINGYFY owrt 原生 IRQ affinity。"
+        return 0
+    fi
+
     local affinity_script_dir="$BUILD_DIR/target/linux/qualcommax"
 
     if [ -d "$affinity_script_dir" ]; then
@@ -142,9 +149,11 @@ apply_hash_fixes() {
 update_ath11k_fw() {
     local makefile="$BUILD_DIR/package/firmware/ath11k-firmware/Makefile"
     local new_mk="$BASE_PATH/patches/ath11k_fw.mk"
-    local url="https://raw.githubusercontent.com/VIKINGYFY/immortalwrt/refs/heads/main/package/firmware/ath11k-firmware/Makefile"
     local ipq60_target="$BUILD_DIR/target/linux/qualcommax/ipq60xx/target.mk"
     local ipq807_target="$BUILD_DIR/target/linux/qualcommax/ipq807x/target.mk"
+
+    # The recipe is SoC-specific rather than PPE-specific; use the updated owrt source for all builds.
+    local url="https://raw.githubusercontent.com/VIKINGYFY/immortalwrt/refs/heads/owrt/package/firmware/ath11k-firmware/Makefile"
 
     if [ -d "$(dirname "$makefile")" ]; then
         echo "正在更新 ath11k-firmware Makefile..."
@@ -177,10 +186,25 @@ change_cpuusage() {
     local luci_rpc_path="$BUILD_DIR/feeds/luci/modules/luci-base/root/usr/share/rpcd/ucode/luci"
     local qualcommax_sbin_dir="$BUILD_DIR/target/linux/qualcommax/base-files/sbin"
     local filogic_sbin_dir="$BUILD_DIR/target/linux/mediatek/filogic/base-files/sbin"
+    local cpuusage_script_command="/sbin/cpuusage"
+    local ppe_aware_build=0
+
+    if is_vikingyfy_owrt_build; then
+        cpuusage_script_command="/sbin/cpuusage --ppe-nss"
+        ppe_aware_build=1
+    fi
 
     if [ -f "$luci_rpc_path" ]; then
-        sed -i "s#const fd = popen('top -n1 | awk \\\'/^CPU/ {printf(\"%d%\", 100 - \$8)}\\\'')#const cpuUsageCommand = access('/sbin/cpuusage') ? '/sbin/cpuusage' : 'top -n1 | awk \\\'/^CPU/ {printf(\"%d%\", 100 - \$8)}\\\''#g" "$luci_rpc_path"
+        sed -i "s#const fd = popen('top -n1 | awk \\\'/^CPU/ {printf(\"%d%\", 100 - \$8)}\\\'')#const cpuUsageCommand = access('/sbin/cpuusage') ? '${cpuusage_script_command}' : 'top -n1 | awk \\\'/^CPU/ {printf(\"%d%\", 100 - \$8)}\\\''#g" "$luci_rpc_path"
         sed -i '/cpuUsageCommand/a \\t\t\tconst fd = popen(cpuUsageCommand);' "$luci_rpc_path"
+        if [ "$ppe_aware_build" = "1" ] &&
+            ! grep -Fq "const cpuUsageCommand = access('/sbin/cpuusage') ? '$cpuusage_script_command'" "$luci_rpc_path"; then
+            echo "错误：VIKINGYFY LuCI getCPUUsage 未接入 PPE/NSS cpuusage 脚本。" >&2
+            return 1
+        fi
+    elif [ "$ppe_aware_build" = "1" ]; then
+        echo "错误：VIKINGYFY 构建缺少 LuCI cpuusage RPC 源文件：$luci_rpc_path" >&2
+        return 1
     fi
 
     local old_script_path="$BUILD_DIR/package/base-files/files/sbin/cpuusage"

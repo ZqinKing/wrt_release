@@ -2,6 +2,20 @@
 # Copyright (C) 2024 YumesomeZakura <1552037053@qq.com>
 
 cpu_usage=$(top -bn1 | head -n2 | awk -F'[ %]+' 'NR==2{print $2}')
+
+if [ "${1:-}" = "--ppe-nss" ]; then
+    read -r ppe_ipv4 ppe_ipv6 ppe_total 2>/dev/null < /sys/kernel/debug/3a000000.ppe/active_flows
+    echo -n "CPU: ${cpu_usage}% PPE: ${ppe_total:-N/A} (IPv4: ${ppe_ipv4:-N/A} IPv6: ${ppe_ipv6:-N/A})"
+
+    read -r nss_wlan 2>/dev/null < /sys/module/nss_wifi_drv/parameters/wlan
+    if [ "${nss_wlan:-0}" -ne 0 ]; then
+        read -r nss_ipv4 nss_ipv6 nss_total nss_limit 2>/dev/null \
+            < /sys/bus/platform/devices/39000000.nss/flow_stats
+        echo -n " NSS: ${nss_total:-N/A}/${nss_limit:-N/A} (IPv4: ${nss_ipv4:-N/A} IPv6: ${nss_ipv6:-N/A})"
+    fi
+    exit 0
+fi
+
 combined_output=""
 
 if [ -e "/sys/kernel/debug/qca-nss-drv/stats/cpu_load_ubi" ]; then

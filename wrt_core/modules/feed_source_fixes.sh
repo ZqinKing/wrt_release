@@ -2,20 +2,22 @@
 # install_feeds 前的 feed 工作树修正。
 
 remove_unwanted_packages() {
-    # 移除将由 custom_feed 接管或会产生冲突的上游包。
+    # 移除由 custom_feed 接管、冲突或含递归 Kconfig 的未用上游包。
     local luci_packages=(
         "luci-app-passwall" "luci-app-ddns-go" "luci-app-rclone" "luci-app-ssr-plus"
         "luci-app-vssr" "luci-app-daed" "luci-app-dae" "luci-app-alist" "luci-app-homeproxy"
         "luci-app-haproxy-tcp" "luci-app-openclash" "luci-app-mihomo" "luci-app-appfilter"
         "luci-app-msd_lite" "luci-app-unblockneteasemusic" "luci-app-adguardhome"
+        "luci-app-fwknopd"
     )
     local packages_net=(
-        "haproxy" "xray-core" "xray-plugin" "dns2socks" "alist" "hysteria"
+        "haproxy" "xray-core" "xray-plugin" "dns2socks" "alist" "hysteria" "fwknop"
         "mosdns" "adguardhome" "ddns-go" "naiveproxy" "shadowsocks-rust"
         "sing-box" "v2ray-core" "v2ray-geodata" "v2ray-plugin" "tuic-client"
         "chinadns-ng" "ipt2socks" "tcping" "trojan-plus" "simple-obfs" "shadowsocksr-libev"
         "dae" "daed" "mihomo" "geoview" "open-app-filter" "msd_lite"
     )
+    local packages_sound=("squeezelite")
     local packages_utils=(
         "cups"
     )
@@ -31,6 +33,12 @@ remove_unwanted_packages() {
     for pkg in "${packages_net[@]}"; do
         if [[ -d ./feeds/packages/net/$pkg ]]; then
             \rm -rf ./feeds/packages/net/$pkg
+        fi
+    done
+
+    for pkg in "${packages_sound[@]}"; do
+        if [[ -d ./feeds/packages/sound/$pkg ]]; then
+            \rm -rf ./feeds/packages/sound/$pkg
         fi
     done
 

@@ -1,6 +1,15 @@
 #!/bin/sh
 
 board_name=$(cat /tmp/sysinfo/board_name)
+hotplug_mode=0
+wifi_config_changed=0
+[ "${1:-}" = "--hotplug" ] && hotplug_mode=1
+
+wifi_radio_ready() {
+	local radio=$1
+	[ "$(uci -q get wireless.radio${radio}.type)" = "mac80211" ] &&
+		[ "$(uci -q get wireless.default_radio${radio}.device)" = "radio${radio}" ]
+}
 
 configure_wifi() {
 	local radio=$1
@@ -10,9 +19,34 @@ configure_wifi() {
 	local ssid=$5
 	local key=$6
 	local encryption=${7:-"psk2+ccmp"} # 新增 encryption 参数，如果为空则默认为 psk2+ccmp
-	local now_encryption=$(uci get wireless.default_radio${radio}.encryption)
-	if [ -n "$now_encryption" ] && [ "$now_encryption" != "none" ]; then
+	if [ "$hotplug_mode" = "1" ] && ! wifi_radio_ready "$radio"; then
 		return 0
+	fi
+	local now_encryption=$(uci -q get wireless.default_radio${radio}.encryption)
+	if [ -n "$now_encryption" ] && [ "$now_encryption" != "none" ]; then
+		local now_ssid=$(uci -q get wireless.default_radio${radio}.ssid)
+		local now_key=$(uci -q get wireless.default_radio${radio}.key)
+		local use_local_defaults=0
+
+		if [ "$now_encryption" = "$encryption" ] && [ "$now_key" = "$key" ]; then
+			if [ "$now_ssid" = "OWRT" ]; then
+				use_local_defaults=1
+			elif [ "$(uci -q get router-tool.radio${radio}.defaults_done)" = "1" ]; then
+				local default_hostname=$(uci -q get system.@system[0].hostname)
+				local board_vendor=$(printf '%s\n' "${board_name%%,*}" | awk '{ print toupper(substr($0, 1, 1)) substr($0, 2) }')
+				default_hostname=${default_hostname:-"OWRT"}
+				case "$now_ssid" in
+					"$default_hostname-$board_vendor-2.4G"|\
+					"$default_hostname-$board_vendor-5.2G"|\
+					"$default_hostname-$board_vendor-5.8G"|\
+					"$default_hostname-$board_vendor-6G")
+						use_local_defaults=1
+						;;
+				esac
+			fi
+		fi
+
+		[ "$use_local_defaults" = "1" ] || return 0
 	fi
 	uci -q batch <<EOF
 set wireless.radio${radio}.channel="${channel}"
@@ -32,6 +66,7 @@ set wireless.default_radio${radio}.bss_transition='1'
 set wireless.default_radio${radio}.wnm_sleep_mode='1'
 set wireless.default_radio${radio}.wnm_sleep_mode_no_keys='1'
 EOF
+	wifi_config_changed=1
 }
 
 configure_wifi7() {
@@ -42,6 +77,9 @@ configure_wifi7() {
 	local ssid=$5
 	local key=$6
 	local encryption=${7:-"psk2"} # 新增 encryption 参数，如果为空则默认为 psk2
+	if [ "$hotplug_mode" = "1" ] && ! wifi_radio_ready "$radio"; then
+		return 0
+	fi
 	local now_encryption=$(uci -q get wireless.default_radio${radio}.encryption)
 	local bandmode=$(uci -q get wireless.radio${radio}.band)
 	if [ "$bandmode" = "6g" ] && [ "$now_encryption" = "$encryption" ]; then
@@ -69,6 +107,7 @@ set wireless.default_radio${radio}.time_zone='CST-8'
 set wireless.default_radio${radio}.bss_transition='1'
 set wireless.default_radio${radio}.wmm='1'
 EOF
+	wifi_config_changed=1
 	if [ "$bandmode" = "2g" ]; then
 		uci -q batch <<EOF
 set wireless.radio${radio}.legacy_rates='1'
@@ -132,12 +171,20 @@ gemtek_w1701k_wifi_cfg() {
 	configure_wifi7 0 1 EHT20 23 'Gemtek_W1701K' '12345678'
 	configure_wifi7 1 44 EHT160 23 'Gemtek_W1701K_5G' '12345678'
 	configure_wifi7 2 1 EHT320 23 'Gemtek_W1701K_6G' '12345678' 'sae'
-	uci set wireless.radio2.disabled='1'
+	if [ "$hotplug_mode" != "1" ] || wifi_radio_ready 2; then
+		uci set wireless.radio2.disabled='1'
+		wifi_config_changed=1
+	fi
 }
 
 link_nn6000_wifi_cfg() {
 	configure_wifi 0 149 HE80 19 'Link_NN6000_5G' '12345678'
 	configure_wifi 1 1 HT20 19 'Link_NN6000' '12345678'
+}
+
+zn_m2_wifi_cfg() {
+	configure_wifi 0 149 HE80 19 'ZN_M2_5G' '12345678'
+	configure_wifi 1 1 HT20 19 'ZN_M2' '12345678'
 }
 
 case "${board_name}" in
@@ -148,6 +195,9 @@ jdcloud,ax1800-pro | \
 jdcloud,ax6600 | \
 	jdcloud,re-cs-02)
 	jdc_ax6600_wifi_cfg
+	;;
+zn,m2)
+	zn_m2_wifi_cfg
 	;;
 redmi,ax5 | \
 	redmi,ax5-jdcloud)
@@ -183,5 +233,11 @@ link,nn6000-v2)
 	;;
 esac
 
-uci commit wireless
-/etc/init.d/network restart
+if [ "$hotplug_mode" = "1" ]; then
+	if [ "$wifi_config_changed" = "1" ]; then
+		uci commit wireless
+	fi
+else
+	uci commit wireless
+	/etc/init.d/network restart
+fi

@@ -41,6 +41,7 @@ source "$SCRIPT_DIR/modules/cups.sh"
 source "$SCRIPT_DIR/modules/feed_source_fixes.sh"
 source "$SCRIPT_DIR/modules/package_source_updates.sh"
 source "$SCRIPT_DIR/modules/target_fixes.sh"
+source "$SCRIPT_DIR/modules/default_settings.sh"
 source "$SCRIPT_DIR/modules/luci_fixes.sh"
 source "$SCRIPT_DIR/modules/service_fixes.sh"
 
@@ -115,6 +116,7 @@ stage_pre_install_source_fixes() {
     fix_easytier_mk
     remove_attendedsysupgrade
     fix_kconfig_recursive_dependency
+    fix_nf_conntrack_bridge_package_split
 }
 
 stage_feeds_install() {
