@@ -269,7 +269,30 @@ EOF
 
 
 fix_rust_compile_error() {
-    if [ -f "$BUILD_DIR/feeds/packages/lang/rust/Makefile" ]; then
-        sed -i 's/download-ci-llvm=true/download-ci-llvm=false/g' "$BUILD_DIR/feeds/packages/lang/rust/Makefile"
+    local rust_makefile="$BUILD_DIR/feeds/packages/lang/rust/Makefile"
+    [ -f "$rust_makefile" ] || return 0
+
+    sed -i 's/download-ci-llvm=true/download-ci-llvm=false/g' "$rust_makefile"
+
+    if [[ "$REPO_URL" == "https://github.com/padavanonly/immortalwrt-mt798x-6.6.git" &&
+          "$REPO_BRANCH" == "openwrt-24.10-6.6" ]]; then
+        local rust_min_version="1.94.1"
+        local rust_package_version
+        local lowest_version
+        rust_package_version=$(sed -n 's/^PKG_VERSION:=//p' "$rust_makefile")
+
+        if [[ "$rust_package_version" == "1.94.0" ]]; then
+            sed -i \
+                -e 's/^PKG_VERSION:=1\.94\.0$/PKG_VERSION:=1.94.1/' \
+                -e 's/^PKG_HASH:=.*/PKG_HASH:=174fce10ce012317ca995810296d8af199318838180b03d68a853e0f02d4b571/' \
+                "$rust_makefile"
+            rust_package_version=$(sed -n 's/^PKG_VERSION:=//p' "$rust_makefile")
+        fi
+
+        lowest_version=$(printf '%s\n' "$rust_min_version" "$rust_package_version" | sort -V | head -n 1)
+        if [[ "$lowest_version" != "$rust_min_version" ]]; then
+            echo "错误：padavanonly 源码需要 Rust $rust_min_version 或更新版本，当前 Rust 包版本为 $rust_package_version" >&2
+            return 1
+        fi
     fi
 }
