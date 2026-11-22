@@ -31,6 +31,7 @@ read_ini_by_key() {
 REPO_URL=$(read_ini_by_key "REPO_URL")
 REPO_BRANCH=$(read_ini_by_key "REPO_BRANCH")
 REPO_BRANCH=${REPO_BRANCH:-main}
+COMMIT_HASH=$(read_ini_by_key "COMMIT_HASH")
 # GitHub Actions usually runs in root of repo, so build dir should be relative to repo root
 # We need to construct absolute path or ensure context is correct.
 # Assuming this script is run from repo root or wrt_core.
@@ -40,7 +41,11 @@ BUILD_DIR="$BASE_PATH/../action_build"
 
 echo $REPO_URL $REPO_BRANCH
 # Write flag one level up from wrt_core (repo root usually)
-echo "$REPO_URL/$REPO_BRANCH" >"$BASE_PATH/../repo_flag"
+REPO_FLAG="$REPO_URL/$REPO_BRANCH"
+if [[ -n "$COMMIT_HASH" && "$COMMIT_HASH" != "none" ]]; then
+    REPO_FLAG="$REPO_FLAG/$COMMIT_HASH"
+fi
+echo "$REPO_FLAG" >"$BASE_PATH/../repo_flag"
 git_retry clone --depth 1 -b "$REPO_BRANCH" "$REPO_URL" "$BUILD_DIR"
 
 # GitHub Action 移除国内下载源

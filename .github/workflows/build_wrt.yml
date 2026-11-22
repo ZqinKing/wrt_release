@@ -70,16 +70,10 @@ jobs:
         run: sudo bash wrt_core/setup_ci_environment.sh
 
       - name: Set Build Date and Timezone
-        env:
-          RAW_ADD_CONFIG_FRAGMENTS: ${{ inputs.add_fragments }}
-          RAW_REMOVE_CONFIG_FRAGMENTS: ${{ inputs.remove_fragments }}
         run: |
           sudo -E timedatectl set-timezone "Asia/Shanghai"
           export BUILD_DATE=$(TZ=UTC-8 date +"%y.%m.%d_%H.%M.%S")
           echo "BUILD_DATE=$BUILD_DATE" >> $GITHUB_ENV
-          sanitize_cache_key_part() { printf '%s' "$1" | tr -c 'A-Za-z0-9_.-' '_'; }
-          echo "ADD_CONFIG_FRAGMENTS_KEY=$(sanitize_cache_key_part "$RAW_ADD_CONFIG_FRAGMENTS")" >> $GITHUB_ENV
-          echo "REMOVE_CONFIG_FRAGMENTS_KEY=$(sanitize_cache_key_part "$RAW_REMOVE_CONFIG_FRAGMENTS")" >> $GITHUB_ENV
 
       - name: Pre Clone
         run: ./wrt_core/pre_clone_action.sh ${{ inputs.model }}
@@ -89,19 +83,19 @@ jobs:
         with:
           path: |
             ./action_build/.ccache
-            ./action_build/staging_dir
-          key: ${{ matrix.os }}-${{ inputs.model }}-${{ hashFiles('**/repo_flag') }}-${{ env.ADD_CONFIG_FRAGMENTS_KEY }}-${{ env.REMOVE_CONFIG_FRAGMENTS_KEY }}-${{ env.BUILD_DATE }}
+            ./action_build/staging_dir/host
+            ./action_build/staging_dir/toolchain-*
+          key: openwrt-build-v1-${{ matrix.os }}-${{ hashFiles('repo_flag') }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            ${{ matrix.os }}-${{ inputs.model }}-${{ hashFiles('**/repo_flag') }}-${{ env.ADD_CONFIG_FRAGMENTS_KEY }}-${{ env.REMOVE_CONFIG_FRAGMENTS_KEY }}-
-            ${{ matrix.os }}-${{ inputs.model }}-${{ hashFiles('**/repo_flag') }}-
+            openwrt-build-v1-${{ matrix.os }}-${{ hashFiles('repo_flag') }}-
 
       - name: Refresh the cache
         run: |
-          if [ -d "./action_build/staging_dir" ]; then
-            find "./action_build/staging_dir" -type d -name "stamp" -not -path "*target*" | while read -r dir; do
-                find "$dir" -type f -exec touch {} +
-            done
-          fi
+          for dir in ./action_build/staging_dir/{host,toolchain-*}/stamp; do
+            if [ -d "$dir" ]; then
+              find "$dir" -type f -exec touch {} +
+            fi
+          done
 
       - name: Machine Information (Pre-build)
         run: |
@@ -136,13 +130,8 @@ jobs:
           REMOVE_CONFIG_FRAGMENTS: ${{ inputs.remove_fragments }}
         run: ./build.sh ${{ inputs.model }}
 
-      - name: Delete Old Cache
+      - name: Cache Status
         run: |
-          # 获取缓存列表并删除
-          gh cache list --key ${{ matrix.os }}-${{ inputs.model }}-${{ hashFiles('**/repo_flag') }}- --json key --jq '.[] | .key' | while read -r key; do
-            gh cache delete "$key"
-          done
-          # 输出缓存状态
           echo "========cache status========"
           echo "ccache: $(du -sh ./action_build/.ccache | cut -f 1)"
           echo "staging: $(du -sh ./action_build/staging_dir | cut -f 1)"
