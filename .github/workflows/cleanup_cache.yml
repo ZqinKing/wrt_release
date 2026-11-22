@@ -1,0 +1,98 @@
+name: Cleanup OpenWrt Build Caches
+
+on:
+  workflow_run:
+    workflows:
+      - Build WRT
+      - Release WRT
+    types:
+      - completed
+
+permissions:
+  actions: write
+
+concurrency:
+  group: cleanup-openwrt-build-caches
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'workflow_dispatch' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Remove superseded source caches
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          CACHE_FAMILY: openwrt-build-v1-
+          CACHE_KEY_PATTERN: '^openwrt-build-v1-[A-Za-z0-9._-]+-[0-9a-f]{64}-[0-9]+-[0-9]+$'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "$CACHE_FAMILY" != "openwrt-build-v1-" ]]; then
+            echo "Refusing unexpected cache family: $CACHE_FAMILY" >&2
+            exit 1
+          fi
+
+          if [[ "$CACHE_KEY_PATTERN" != '^openwrt-build-v1-[A-Za-z0-9._-]+-[0-9a-f]{64}-[0-9]+-[0-9]+$' ]]; then
+            echo "Refusing unexpected cache key pattern: $CACHE_KEY_PATTERN" >&2
+            exit 1
+          fi
+
+          cache_json=$(mktemp)
+          delete_list=$(mktemp)
+          trap 'rm -f "$cache_json" "$delete_list"' EXIT
+
+          gh api --paginate --slurp \
+            "/repos/${GH_REPO}/actions/caches?per_page=100" |
+            jq '[.[] | .actions_caches[] | {
+              id,
+              key,
+              createdAt: .created_at,
+              ref
+            }]' >"$cache_json"
+
+          invalid_keys=$(
+            jq -r \
+              --arg family "$CACHE_FAMILY" \
+              --arg pattern "$CACHE_KEY_PATTERN" '
+                .[]
+                | select(.key | startswith($family))
+                | select((.key | test($pattern)) | not)
+                | [.id, .key, .ref]
+                | @tsv
+              ' "$cache_json"
+          )
+
+          if [[ -n "$invalid_keys" ]]; then
+            echo "Refusing to clean malformed cache keys:" >&2
+            printf '%s\n' "$invalid_keys" >&2
+            exit 1
+          fi
+
+          jq -r \
+            --arg family "$CACHE_FAMILY" '
+              map(select(.key | startswith($family)))
+              | group_by([.ref, (.key | sub("-[0-9]+-[0-9]+$"; ""))])
+              | .[]
+              | sort_by([.createdAt, .id])
+              | .[0:-1][]
+              | [.id, .key, .createdAt]
+              | @tsv
+            ' "$cache_json" >"$delete_list"
+
+          delete_count=$(wc -l <"$delete_list" | tr -d '[:space:]')
+          echo "Deleting ${delete_count} superseded OpenWrt build cache(s)."
+
+          while IFS=$'\t' read -r cache_id cache_key created_at; do
+            [[ -n "$cache_id" ]] || continue
+            if [[ ! "$cache_id" =~ ^[0-9]+$ ]]; then
+              echo "Refusing to delete non-numeric cache ID: $cache_id" >&2
+              exit 1
+            fi
+
+            echo "Deleting cache ID ${cache_id}: ${cache_key} (created ${created_at})"
+            gh api --method DELETE \
+              "/repos/${GH_REPO}/actions/caches/${cache_id}"
+          done <"$delete_list"
