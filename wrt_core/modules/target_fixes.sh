@@ -29,8 +29,8 @@ fix_miniupnpd() {
 
 
 change_dnsmasq2full() {
-    if ! grep -q "dnsmasq-full" $BUILD_DIR/include/target.mk; then
-        sed -i 's/dnsmasq/dnsmasq-full/g' ./include/target.mk
+    if ! grep -q "dnsmasq-full" "$BUILD_DIR/include/target.mk"; then
+        sed -i 's/dnsmasq/dnsmasq-full/g' "$BUILD_DIR/include/target.mk"
     fi
 }
 
