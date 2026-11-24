@@ -10,7 +10,7 @@
 +	[ "$mediaurlbase" = "/luci-static/bootstrap" ] || return 0
 +	[ -f /www/luci-static/vantage/vantage.css ] || return 0
 +	[ -d /usr/share/ucode/luci/template/themes/vantage ] || return 0
-+	if [ -f /www/luci-static/bootstrap/css/cascade.css ] &&
++	if [ -f /www/luci-static/bootstrap/cascade.css ] &&
 +	   [ -d /usr/share/ucode/luci/template/themes/bootstrap ]; then
 +		return 0
 +	fi

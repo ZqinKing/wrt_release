@@ -267,10 +267,12 @@ update_vantage() {
     echo "Vantage 最新提交: $commit_hash"
 
     if [ -d "$BUILD_DIR/feeds/luci/themes" ]; then
-        find "$BUILD_DIR/feeds/luci/themes" -mindepth 1 -maxdepth 1 ! -name "luci-theme-vantage" -exec rm -rf -- {} +
+        find "$BUILD_DIR/feeds/luci/themes" -mindepth 1 -maxdepth 1 \
+            ! -name "luci-theme-vantage" ! -name "luci-theme-bootstrap" -exec rm -rf -- {} +
     fi
     if [ -d "$BUILD_DIR/package/feeds/luci" ]; then
-        find "$BUILD_DIR/package/feeds/luci" -mindepth 1 -maxdepth 1 -name "luci-theme-*" ! -name "luci-theme-vantage" -exec rm -rf -- {} +
+        find "$BUILD_DIR/package/feeds/luci" -mindepth 1 -maxdepth 1 -name "luci-theme-*" \
+            ! -name "luci-theme-vantage" ! -name "luci-theme-bootstrap" -exec rm -rf -- {} +
     fi
     rm -rf "$dst_theme_path" "$dst_app_path"
     mkdir -p "$BUILD_DIR/feeds/luci/themes" "$BUILD_DIR/feeds/luci/applications"
