@@ -1,11 +1,6 @@
 #!/usr/bin/env bash
 # 设备配置片段解析与最终 .config 装配。
 
-read_ini_by_key() {
-    local key=$1
-    awk -F"=" -v key="$key" '$1 == key {print $2}' "$INI_FILE"
-}
-
 parse_fragment_csv() {
     local csv=$1
     local output_array=$2

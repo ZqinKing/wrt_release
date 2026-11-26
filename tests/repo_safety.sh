@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
-source "$ROOT/wrt_core/modules/network.sh"
+source "$ROOT/wrt_core/modules/lib/network.sh"
 source "$ROOT/wrt_core/modules/repo.sh"
 export NETWORK_RETRY_MAX=1 NETWORK_RETRY_DELAY=0
 BASE_PATH="$ROOT/wrt_core"

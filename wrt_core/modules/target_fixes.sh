@@ -1,32 +1,14 @@
 #!/usr/bin/env bash
-# target、kernel 与 base system 源码修正。
+# 目标平台与基础系统修正。
 
-is_vikingyfy_owrt_build() {
-    [[ "${REPO_URL:-}" == "https://github.com/VIKINGYFY/immortalwrt.git" && "${REPO_BRANCH:-}" == "owrt" ]]
-}
-
-
-fix_miniupnpd() {
-    local miniupnpd_dir="$BUILD_DIR/feeds/packages/net/miniupnpd"
-    local patch_file="999-chanage-default-leaseduration.patch"
-    local upstream_repo="https://github.com/immortalwrt/packages.git"
-    local upstream_branch="openwrt-25.12"
-
-    if [ -d "$miniupnpd_dir" ] && [ -f "$BASE_PATH/patches/$patch_file" ]; then
-        if ! sync_sparse_packages_to_feed_dir \
-            "$upstream_repo" \
-            "$upstream_branch" \
-            "$BUILD_DIR/feeds/packages" \
-            "immortalwrt/packages" \
-            "net/miniupnpd"; then
-            echo "错误：同步 miniupnpd 到 $upstream_branch 分支失败" >&2
-            return 1
+remove_tweaked_packages() {
+    local target_mk="$BUILD_DIR/include/target.mk"
+    if [ -f "$target_mk" ]; then
+        if grep -q "^DEFAULT_PACKAGES += \$(DEFAULT_PACKAGES.tweak)" "$target_mk"; then
+            sed -i 's/DEFAULT_PACKAGES += $(DEFAULT_PACKAGES.tweak)/# DEFAULT_PACKAGES += $(DEFAULT_PACKAGES.tweak)/g' "$target_mk"
         fi
-
-        install -Dm644 "$BASE_PATH/patches/$patch_file" "$miniupnpd_dir/patches/$patch_file"
     fi
 }
-
 
 change_dnsmasq2full() {
     if ! grep -q "dnsmasq-full" "$BUILD_DIR/include/target.mk"; then
@@ -34,14 +16,12 @@ change_dnsmasq2full() {
     fi
 }
 
-
 fix_mk_def_depends() {
     sed -i 's/libustream-mbedtls/libustream-openssl/g' $BUILD_DIR/include/target.mk 2>/dev/null
     if [ -f $BUILD_DIR/target/linux/qualcommax/Makefile ]; then
         sed -i 's/wpad-openssl/wpad-mesh-openssl/g' $BUILD_DIR/target/linux/qualcommax/Makefile
     fi
 }
-
 
 fix_kconfig_recursive_dependency() {
     local file="$BUILD_DIR/scripts/package-metadata.pl"
@@ -51,28 +31,12 @@ fix_kconfig_recursive_dependency() {
     fi
 }
 
-
-fix_nf_conntrack_bridge_package_split() {
-    local netfilter_map="$BUILD_DIR/include/netfilter.mk"
-    local netfilter_packages="$BUILD_DIR/package/kernel/linux/modules/netfilter.mk"
-    local duplicate_map='nf_add,NFT_BRIDGE,CONFIG_NF_CONNTRACK_BRIDGE,'
-
-    if [[ -f "$netfilter_map" && -f "$netfilter_packages" ]] &&
-        grep -Fq "define KernelPackage/nf-conntrack-bridge" "$netfilter_packages" &&
-        grep -Fq "$duplicate_map" "$netfilter_map"; then
-        sed -i '/nf_add,NFT_BRIDGE,CONFIG_NF_CONNTRACK_BRIDGE,/d' "$netfilter_map"
-        echo "已从 nft-bridge 分组移除重复的 nf_conntrack_bridge 模块映射。"
-    fi
-}
-
-
 update_default_lan_addr() {
     local CFG_PATH="$BUILD_DIR/package/base-files/files/bin/config_generate"
     if [ -f $CFG_PATH ]; then
         sed -i 's/192\.168\.[0-9]*\.[0-9]*/'$LAN_ADDR'/g' $CFG_PATH
     fi
 }
-
 
 remove_something_nss_kmod() {
     local ipq_mk_path="$BUILD_DIR/target/linux/qualcommax/Makefile"
@@ -101,7 +65,6 @@ remove_something_nss_kmod() {
     fi
 }
 
-
 update_affinity_script() {
     if is_vikingyfy_owrt_build; then
         echo "保留 VIKINGYFY owrt 原生 IRQ affinity。"
@@ -113,38 +76,9 @@ update_affinity_script() {
     if [ -d "$affinity_script_dir" ]; then
         find "$affinity_script_dir" -name "set-irq-affinity" -exec rm -f {} \;
         find "$affinity_script_dir" -name "smp_affinity" -exec rm -f {} \;
-        install -Dm755 "$BASE_PATH/patches/smp_affinity" "$affinity_script_dir/base-files/etc/init.d/smp_affinity"
+        install -Dm755 "$BASE_PATH/files/init.d/smp_affinity" "$affinity_script_dir/base-files/etc/init.d/smp_affinity"
     fi
 }
-
-
-fix_hash_value() {
-    local makefile_path="$1"
-    local old_hash="$2"
-    local new_hash="$3"
-    local package_name="$4"
-
-    if [ -f "$makefile_path" ]; then
-        sed -i "s/$old_hash/$new_hash/g" "$makefile_path"
-        echo "已修正 $package_name 的哈希值。"
-    fi
-}
-
-
-apply_hash_fixes() {
-    fix_hash_value \
-        "$BUILD_DIR/package/feeds/packages/smartdns/Makefile" \
-        "860a816bf1e69d5a8a2049483197dbebe8a3da2c9b05b2da68c85ef7dee7bdde" \
-        "582021891808442b01f551bc41d7d95c38fb00c1ec78a58ac3aaaf898fbd2b5b" \
-        "smartdns"
-
-    fix_hash_value \
-        "$BUILD_DIR/package/feeds/packages/smartdns/Makefile" \
-        "320c99a65ca67a98d11a45292aa99b8904b5ebae5b0e17b302932076bf62b1ec" \
-        "43e58467690476a77ce644f9dc246e8a481353160644203a1bd01eb09c881275" \
-        "smartdns"
-}
-
 
 update_ath11k_fw() {
     local makefile="$BUILD_DIR/package/firmware/ath11k-firmware/Makefile"
@@ -186,7 +120,6 @@ update_ath11k_fw() {
     fi
 }
 
-
 change_cpuusage() {
     local luci_rpc_path="$BUILD_DIR/feeds/luci/modules/luci-base/root/usr/share/rpcd/ucode/luci"
     local qualcommax_sbin_dir="$BUILD_DIR/target/linux/qualcommax/base-files/sbin"
@@ -218,13 +151,12 @@ change_cpuusage() {
     fi
 
     if [ -d "$BUILD_DIR/target/linux/qualcommax" ]; then
-        install -Dm755 "$BASE_PATH/patches/cpuusage" "$qualcommax_sbin_dir/cpuusage"
+        install -Dm755 "$BASE_PATH/files/sbin/cpuusage" "$qualcommax_sbin_dir/cpuusage"
     fi
     if [ -d "$BUILD_DIR/target/linux/mediatek" ]; then
-        install -Dm755 "$BASE_PATH/patches/hnatusage" "$filogic_sbin_dir/cpuusage"
+        install -Dm755 "$BASE_PATH/files/sbin/hnatusage" "$filogic_sbin_dir/cpuusage"
     fi
 }
-
 
 update_nss_pbuf_performance() {
     local pbuf_path="$BUILD_DIR/package/kernel/mac80211/files/pbuf.uci"
@@ -234,23 +166,13 @@ update_nss_pbuf_performance() {
     fi
 }
 
-
 update_nss_diag() {
     local file="$BUILD_DIR/package/kernel/mac80211/files/nss_diag.sh"
     if [ -d "$(dirname "$file")" ] && [ -f "$file" ]; then
         \rm -f "$file"
-        install -Dm755 "$BASE_PATH/patches/nss_diag.sh" "$file"
+        install -Dm755 "$BASE_PATH/files/sbin/nss_diag.sh" "$file"
     fi
 }
-
-
-fix_compile_coremark() {
-    local file="$BUILD_DIR/feeds/packages/utils/coremark/Makefile"
-    if [ -d "$(dirname "$file")" ] && [ -f "$file" ]; then
-        sed -i 's/mkdir \$/mkdir -p \$/g' "$file"
-    fi
-}
-
 
 update_dnsmasq_conf() {
     local file="$BUILD_DIR/package/network/services/dnsmasq/files/dhcp.conf"
@@ -258,7 +180,6 @@ update_dnsmasq_conf() {
         sed -i '/dns_redirect/d' "$file"
     fi
 }
-
 
 add_backup_info_to_sysupgrade() {
     local conf_path="$BUILD_DIR/package/base-files/files/etc/sysupgrade.conf"
@@ -272,32 +193,46 @@ EOF
     fi
 }
 
+set_custom_task() {
+    local sh_dir="$BUILD_DIR/package/base-files/files/etc/init.d"
+    cat <<'EOF' >"$sh_dir/custom_task"
+#!/bin/sh /etc/rc.common
+START=99
 
-fix_rust_compile_error() {
-    local rust_makefile="$BUILD_DIR/feeds/packages/lang/rust/Makefile"
-    [ -f "$rust_makefile" ] || return 0
+boot() {
+    sed -i '/drop_caches/d' /etc/crontabs/root
+    echo "15 3 * * * sync && echo 3 > /proc/sys/vm/drop_caches" >>/etc/crontabs/root
 
-    sed -i 's/download-ci-llvm=true/download-ci-llvm=false/g' "$rust_makefile"
+    sed -i '/wireguard_watchdog/d' /etc/crontabs/root
 
-    if [[ "$REPO_URL" == "https://github.com/padavanonly/immortalwrt-mt798x-6.6.git" &&
-          "$REPO_BRANCH" == "openwrt-24.10-6.6" ]]; then
-        local rust_min_version="1.94.1"
-        local rust_package_version
-        local lowest_version
-        rust_package_version=$(sed -n 's/^PKG_VERSION:=//p' "$rust_makefile")
+    local wg_ifname=$(wg show | awk '/interface/ {print $2}')
 
-        if [[ "$rust_package_version" == "1.94.0" ]]; then
-            sed -i \
-                -e 's/^PKG_VERSION:=1\.94\.0$/PKG_VERSION:=1.94.1/' \
-                -e 's/^PKG_HASH:=.*/PKG_HASH:=174fce10ce012317ca995810296d8af199318838180b03d68a853e0f02d4b571/' \
-                "$rust_makefile"
-            rust_package_version=$(sed -n 's/^PKG_VERSION:=//p' "$rust_makefile")
-        fi
+    if [ -n "$wg_ifname" ]; then
+        echo "*/15 * * * * /usr/bin/wireguard_watchdog" >>/etc/crontabs/root
+        uci set system.@system[0].cronloglevel='9'
+        uci commit system
+        /etc/init.d/cron restart
+    fi
 
-        lowest_version=$(printf '%s\n' "$rust_min_version" "$rust_package_version" | sort -V | head -n 1)
-        if [[ "$lowest_version" != "$rust_min_version" ]]; then
-            echo "错误：padavanonly 源码需要 Rust $rust_min_version 或更新版本，当前 Rust 包版本为 $rust_package_version" >&2
-            return 1
-        fi
+    crontab /etc/crontabs/root
+}
+EOF
+    chmod +x "$sh_dir/custom_task"
+}
+
+fix_openssl_ktls() {
+    local config_in="$BUILD_DIR/package/libs/openssl/Config.in"
+    if [ -f "$config_in" ]; then
+        echo "正在更新 OpenSSL kTLS 配置..."
+        sed -i 's/select PACKAGE_kmod-tls/depends on PACKAGE_kmod-tls/g' "$config_in"
+        sed -i '/depends on PACKAGE_kmod-tls/a\\tdefault y if PACKAGE_kmod-tls' "$config_in"
+    fi
+}
+
+fix_opkg_check() {
+    local patch_file="$BASE_PATH/patches/001-fix-provides-version-parsing.patch"
+    local opkg_dir="$BUILD_DIR/package/system/opkg"
+    if [ -f "$patch_file" ]; then
+        install -Dm644 "$patch_file" "$opkg_dir/patches/001-fix-provides-version-parsing.patch"
     fi
 }

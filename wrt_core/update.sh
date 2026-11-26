@@ -15,9 +15,13 @@ REPO_BRANCH=$2
 BUILD_DIR=$3
 COMMIT_HASH=$4
 
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+BASE_PATH=${BASE_PATH:-$SCRIPT_DIR}
+source "$SCRIPT_DIR/modules/lib/common.sh"
+
 # 转换为绝对路径，避免后续 cd 后路径失效。
 if [[ "$BUILD_DIR" != /* ]]; then
-    BUILD_DIR="$(pwd)/$BUILD_DIR"
+    BUILD_DIR="$(get_repo_root)/$BUILD_DIR"
 fi
 
 FEEDS_CONF="feeds.conf.default"
@@ -26,21 +30,20 @@ GOLANG_BRANCH="27.x"
 THEME_SET="vantage"
 LAN_ADDR="192.168.1.1"
 
-SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-BASE_PATH=${BASE_PATH:-$SCRIPT_DIR}
 
 # 按静态职责加载模块，执行顺序仍由本脚本统一控制。
-source "$SCRIPT_DIR/modules/network.sh"
+source "$SCRIPT_DIR/modules/lib/network.sh"
+source "$SCRIPT_DIR/modules/lib/feed_sync.sh"
 source "$SCRIPT_DIR/modules/repo.sh"
 source "$SCRIPT_DIR/modules/feeds.sh"
 source "$SCRIPT_DIR/modules/custom_feed.sh"
 source "$SCRIPT_DIR/modules/passwall_fixes.sh"
 source "$SCRIPT_DIR/modules/verify.sh"
 source "$SCRIPT_DIR/modules/docker.sh"
-source "$SCRIPT_DIR/modules/cups.sh"
-source "$SCRIPT_DIR/modules/feed_source_fixes.sh"
-source "$SCRIPT_DIR/modules/package_source_updates.sh"
+source "$SCRIPT_DIR/modules/source_sync.sh"
+source "$SCRIPT_DIR/modules/feed_fixes.sh"
 source "$SCRIPT_DIR/modules/target_fixes.sh"
+source "$SCRIPT_DIR/modules/netfilter_fixes.sh"
 source "$SCRIPT_DIR/modules/default_settings.sh"
 source "$SCRIPT_DIR/modules/luci_fixes.sh"
 source "$SCRIPT_DIR/modules/service_fixes.sh"
@@ -85,7 +88,6 @@ stage_pre_install_source_fixes() {
     remove_something_nss_kmod
     update_affinity_script
     update_ath11k_fw
-    # fix_mkpkg_format_invalid
     change_cpuusage
     update_tcping
     add_ax6600_led
@@ -141,10 +143,10 @@ stage_post_install_package_fixes() {
     fix_quectel_cm
     install_pbr_cmcc
     fix_pbr_ip_forward
-    # apply_hash_fixes
 }
 
 main() {
+    validate_runtime_files
     stage_repo_checkout
     stage_upstream_feeds_update
     stage_feed_source_cleanup

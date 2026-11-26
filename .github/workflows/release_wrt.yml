@@ -68,7 +68,7 @@ jobs:
         uses: actions/checkout@v7.0.0
 
       - name: Build System Setup
-        run: sudo bash wrt_core/setup_ci_environment.sh
+        run: sudo bash wrt_core/ci/setup_ci_environment.sh
 
       - name: Set Build Date and Timezone
         run: |
@@ -79,7 +79,7 @@ jobs:
           echo "BUILD_SRC=$BUILD_SRC" >> $GITHUB_ENV
 
       - name: Pre Clone
-        run: ./wrt_core/pre_clone_action.sh ${{ inputs.model }}
+        run: ./wrt_core/ci/pre_clone_action.sh ${{ inputs.model }}
 
       - name: Cache Dependencies
         uses: actions/cache@v6.1.0

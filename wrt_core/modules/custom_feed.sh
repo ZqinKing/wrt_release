@@ -1,127 +1,24 @@
 #!/usr/bin/env bash
-# custom_feed 同步、注册和路径辅助。
+# custom_feed 准备、注册和路径辅助。
 
 get_custom_feed_name() {
     printf '%s\n' "custom_feed"
 }
-
 
 get_custom_feed_source_dir() {
     # install 前本地 src-link 的源目录。
     printf '%s\n' "$BUILD_DIR/$(get_custom_feed_name)"
 }
 
-
 get_custom_feed_worktree_dir() {
     # feeds update 后生成的 feeds/custom_feed 工作树。
     printf '%s\n' "$BUILD_DIR/feeds/$(get_custom_feed_name)"
 }
 
-
 get_custom_feed_package_dir() {
     # feeds install 后生成的 package/feeds/custom_feed 目录。
     printf '%s\n' "$BUILD_DIR/package/feeds/$(get_custom_feed_name)"
 }
-
-
-sync_sparse_packages_to_feed_dir() {
-    local repo_url="$1"
-    local repo_branch="$2"
-    local target_dir="$3"
-    local repo_label="$4"
-    shift 4
-
-    local packages=("$@")
-    local tmp_dir
-    local missing_packages=()
-    local clone_args=(clone --depth 1 --filter=blob:none --sparse)
-    local pkg
-    local target_pkg
-
-    tmp_dir=$(mktemp -d)
-
-    if [ -n "$repo_branch" ]; then
-        clone_args+=(-b "$repo_branch")
-    fi
-
-    clone_args+=("$repo_url" "$tmp_dir")
-
-    echo "正在从 $repo_label 稀疏同步指定目录..."
-    if ! git_retry "${clone_args[@]}"; then
-        echo "错误：从 $repo_url 拉取仓库骨架失败" >&2
-        rm -rf "$tmp_dir"
-        return 1
-    fi
-
-    if ! git_retry -C "$tmp_dir" sparse-checkout set "${packages[@]}"; then
-        echo "错误：配置 $repo_label 稀疏检出目录失败" >&2
-        rm -rf "$tmp_dir"
-        return 1
-    fi
-
-    for pkg in "${packages[@]}"; do
-        if [ -d "$tmp_dir/$pkg" ]; then
-            target_pkg="$target_dir/$pkg"
-            if ! mkdir -p "$(dirname "$target_pkg")" || ! rm -rf "$target_pkg" || ! mv "$tmp_dir/$pkg" "$target_pkg"; then
-                echo "错误：无法将 $repo_label 的 $pkg 移动到 $target_pkg" >&2
-                rm -rf "$tmp_dir"
-                return 1
-            fi
-        else
-            missing_packages+=("$pkg")
-        fi
-    done
-
-    rm -rf "$tmp_dir"
-
-    if [ ${#missing_packages[@]} -ne 0 ]; then
-        printf '错误：%s 仓库缺少以下必要目录：\n' "$repo_label" >&2
-        printf '  - %s\n' "${missing_packages[@]}" >&2
-        return 1
-    fi
-}
-
-
-sync_repo_root_package_to_feed_dir() {
-    local repo_url="$1"
-    local repo_branch="$2"
-    local target_dir="$3"
-    local repo_label="$4"
-    local package_name="$5"
-    local tmp_dir
-    local clone_args=(clone --depth 1 --filter=blob:none)
-
-    tmp_dir=$(mktemp -d)
-
-    if [ -n "$repo_branch" ]; then
-        clone_args+=(-b "$repo_branch")
-    fi
-
-    clone_args+=("$repo_url" "$tmp_dir")
-
-    echo "正在从 $repo_label 同步单包仓库..."
-    if ! git_retry "${clone_args[@]}"; then
-        echo "错误：从 $repo_url 克隆 $repo_label 失败" >&2
-        rm -rf "$tmp_dir"
-        return 1
-    fi
-
-    if [ ! -f "$tmp_dir/Makefile" ]; then
-        echo "错误：$repo_label 仓库根目录缺少 OpenWrt 软件包 Makefile" >&2
-        rm -rf "$tmp_dir"
-        return 1
-    fi
-
-    rm -rf "$tmp_dir/.git"
-    rm -rf "$target_dir/$package_name"
-
-    if ! mv "$tmp_dir" "$target_dir/$package_name"; then
-        echo "错误：无法将 $repo_label 移动到 $target_dir/$package_name" >&2
-        rm -rf "$tmp_dir"
-        return 1
-    fi
-}
-
 
 remove_nested_airoha_npu_package() {
     local package_dir="$1"
@@ -134,7 +31,6 @@ remove_nested_airoha_npu_package() {
         echo "已移除 luci-app-airoha-npu 的重复嵌套包目录：$nested_package_dir"
     fi
 }
-
 
 fix_emmc_health_luci_js_deps() {
     local package_dir="$1"
@@ -151,7 +47,6 @@ fix_emmc_health_luci_js_deps() {
     fi
 }
 
-
 fix_airoha_npu_luci_mk() {
     local package_dir="$1"
     local makefile_path
@@ -164,7 +59,6 @@ fix_airoha_npu_luci_mk() {
     done < <(find "$package_dir" -type f -name Makefile -print0)
 }
 
-
 register_local_feed_source() {
     local custom_feed_dir="$1"
     local feeds_path="$2"
@@ -176,7 +70,6 @@ register_local_feed_source() {
     echo "src-link $feed_name $custom_feed_dir" >>"$feeds_path"
     echo "已将 $feed_name 作为本地源 (src-link) 添加到 $feeds_path"
 }
-
 
 install_custom_feed() {
     local feeds_path
@@ -289,7 +182,6 @@ install_custom_feed() {
 
     echo "$custom_feed_name 指定包处理完成并已成功加载到 feeds 体系中！"
 }
-
 
 collect_missing_directories() {
     local base_dir="$1"

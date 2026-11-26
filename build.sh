@@ -185,31 +185,21 @@ fi
 
 validate_build_mode
 
-BASE_CONFIG_FILE="$BASE_PATH/deconfig/compile_base.config"
+BASE_CONFIG_FILE="$BASE_PATH/deconfig/common/compile_base.config"
 CONFIG_FRAGMENT_DIR="$BASE_PATH/deconfig/fragments"
 DEFAULT_CONFIG_FRAGMENTS=()
 ADD_CONFIG_FRAGMENT_LIST=()
 REMOVE_CONFIG_FRAGMENT_LIST=()
 EFFECTIVE_CONFIG_FRAGMENTS=()
 
+source "$BASE_PATH/modules/lib/common.sh"
 source "$BASE_PATH/modules/config.sh"
 source "$BASE_PATH/modules/container_build.sh"
+source "$BASE_PATH/modules/post_config_fixes.sh"
 if [[ ! -f "$BASE_CONFIG_FILE" ]]; then
     echo "Base config not found: $BASE_CONFIG_FILE" >&2
     exit 1
 fi
-
-remove_uhttpd_dependency() {
-    local config_path="$BUILD_ROOT/.config"
-    local luci_makefile_path="$BUILD_ROOT/feeds/luci/collections/luci/Makefile"
-
-    if grep -q "CONFIG_PACKAGE_luci-app-quickfile=y" "$config_path"; then
-        if [ -f "$luci_makefile_path" ]; then
-            sed -i '/luci-light/d' "$luci_makefile_path"
-            echo "Removed uhttpd (luci-light) dependency as luci-app-quickfile (nginx) is enabled."
-        fi
-    fi
-}
 
 if [[ $Build_Mod == "container" ]]; then
     run_container_build ""
@@ -256,12 +246,7 @@ remove_uhttpd_dependency
 cd "$BUILD_ROOT"
 make defconfig
 
-if grep -qE "^CONFIG_TARGET_x86_64=y" "$CONFIG_FILE"; then
-    DISTFEEDS_PATH="$BUILD_ROOT/package/emortal/default-settings/files/99-distfeeds.conf"
-    if [ -d "${DISTFEEDS_PATH%/*}" ] && [ -f "$DISTFEEDS_PATH" ]; then
-        sed -i 's/aarch64_cortex-a53/x86_64/g' "$DISTFEEDS_PATH"
-    fi
-fi
+sync_x86_64_distfeeds
 
 if [[ $Build_Mod == "debug" ]]; then
     exit 0

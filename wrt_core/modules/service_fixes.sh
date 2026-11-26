@@ -1,71 +1,5 @@
 #!/usr/bin/env bash
-# 服务包与运行时默认配置修正。
-
-update_adguardhome() {
-    local adguardhome_dir="$(get_custom_feed_package_dir)/luci-app-adguardhome"
-    local repo_url="https://github.com/ZqinKing/luci-app-adguardhome.git"
-
-    echo "正在更新 luci-app-adguardhome..."
-    rm -rf "$adguardhome_dir" 2>/dev/null
-
-    if ! git_retry clone --depth 1 "$repo_url" "$adguardhome_dir"; then
-        echo "错误：从 $repo_url 克隆 luci-app-adguardhome 仓库失败" >&2
-        exit 1
-    fi
-}
-
-
-set_custom_task() {
-    local sh_dir="$BUILD_DIR/package/base-files/files/etc/init.d"
-    cat <<'EOF' >"$sh_dir/custom_task"
-#!/bin/sh /etc/rc.common
-START=99
-
-boot() {
-    sed -i '/drop_caches/d' /etc/crontabs/root
-    echo "15 3 * * * sync && echo 3 > /proc/sys/vm/drop_caches" >>/etc/crontabs/root
-
-    sed -i '/wireguard_watchdog/d' /etc/crontabs/root
-
-    local wg_ifname=$(wg show | awk '/interface/ {print $2}')
-
-    if [ -n "$wg_ifname" ]; then
-        echo "*/15 * * * * /usr/bin/wireguard_watchdog" >>/etc/crontabs/root
-        uci set system.@system[0].cronloglevel='9'
-        uci commit system
-        /etc/init.d/cron restart
-    fi
-
-    crontab /etc/crontabs/root
-}
-EOF
-    chmod +x "$sh_dir/custom_task"
-}
-
-
-install_opkg_distfeeds() {
-    local emortal_def_dir="$BUILD_DIR/package/emortal/default-settings"
-    local distfeeds_conf="$emortal_def_dir/files/99-distfeeds.conf"
-
-    if [ -d "$emortal_def_dir" ] && [ ! -f "$distfeeds_conf" ]; then
-        cat <<'EOF' >"$distfeeds_conf"
-src/gz openwrt_base https://downloads.immortalwrt.org/releases/24.10-SNAPSHOT/packages/aarch64_cortex-a53/base/
-src/gz openwrt_luci https://downloads.immortalwrt.org/releases/24.10-SNAPSHOT/packages/aarch64_cortex-a53/luci/
-src/gz openwrt_packages https://downloads.immortalwrt.org/releases/24.10-SNAPSHOT/packages/aarch64_cortex-a53/packages/
-src/gz openwrt_routing https://downloads.immortalwrt.org/releases/24.10-SNAPSHOT/packages/aarch64_cortex-a53/routing/
-src/gz openwrt_telephony https://downloads.immortalwrt.org/releases/24.10-SNAPSHOT/packages/aarch64_cortex-a53/telephony/
-EOF
-
-        sed -i "/define Package\/default-settings\/install/a\\
-\\t\$(INSTALL_DIR) \$(1)/etc\\n\
-\t\$(INSTALL_DATA) ./files/99-distfeeds.conf \$(1)/etc/99-distfeeds.conf\n" $emortal_def_dir/Makefile
-
-        sed -i "/exit 0/i\\
-[ -f \'/etc/99-distfeeds.conf\' ] && mv \'/etc/99-distfeeds.conf\' \'/etc/opkg/distfeeds.conf\'\n\
-sed -ri \'/check_signature/s@^[^#]@#&@\' /etc/opkg.conf\n" $emortal_def_dir/files/99-default-settings
-    fi
-}
-
+# 已安装服务包与运行配置修正。
 
 update_script_priority() {
     local qca_drv_path="$BUILD_DIR/package/feeds/nss_packages/qca-nss-drv/files/qca-nss-drv.init"
@@ -83,7 +17,6 @@ update_script_priority() {
         sed -i 's/START=.*/START=94/g' "$mosdns_path"
     fi
 }
-
 
 update_geoip() {
     local geodata_path="$(get_custom_feed_package_dir)/v2ray-geodata/Makefile"
@@ -111,122 +44,6 @@ update_geoip() {
     fi
 }
 
-
-fix_easytier_lua() {
-    local file_path="$(get_custom_feed_package_dir)/luci-app-easytier/luasrc/model/cbi/easytier.lua"
-    if [ -f "$file_path" ]; then
-        sed -i 's/util.pcdata/xml.pcdata/g' "$file_path"
-    fi
-}
-
-
-fix_openssl_ktls() {
-    local config_in="$BUILD_DIR/package/libs/openssl/Config.in"
-    if [ -f "$config_in" ]; then
-        echo "正在更新 OpenSSL kTLS 配置..."
-        sed -i 's/select PACKAGE_kmod-tls/depends on PACKAGE_kmod-tls/g' "$config_in"
-        sed -i '/depends on PACKAGE_kmod-tls/a\\tdefault y if PACKAGE_kmod-tls' "$config_in"
-    fi
-}
-
-
-fix_opkg_check() {
-    local patch_file="$BASE_PATH/patches/001-fix-provides-version-parsing.patch"
-    local opkg_dir="$BUILD_DIR/package/system/opkg"
-    if [ -f "$patch_file" ]; then
-        install -Dm644 "$patch_file" "$opkg_dir/patches/001-fix-provides-version-parsing.patch"
-    fi
-}
-
-
-netfilter_kmod_clash_include_fixed() {
-    local include_netfilter_mk="$1"
-
-    grep -q 'CONFIG_IP_NF_IPTABLES_LEGACY, $(P_V4)ip_tables, ge 6.12' "$include_netfilter_mk" && \
-        grep -q 'CONFIG_IP6_NF_IPTABLES_LEGACY, $(P_V6)ip6_tables, ge 6.12' "$include_netfilter_mk" && \
-        grep -q 'CONFIG_IP_NF_IPTABLES_LEGACY, xt_standard ipt_icmp xt_tcp xt_udp xt_comment xt_set xt_SET, ge 6.12' "$include_netfilter_mk" && \
-        grep -q 'CONFIG_IP6_NF_IPTABLES_LEGACY, ip6t_icmp6, ge 6.12' "$include_netfilter_mk"
-}
-
-
-fix_netfilter_kmod_clash() {
-    local include_netfilter_mk="$BUILD_DIR/include/netfilter.mk"
-    local netfilter_mk="$BUILD_DIR/package/kernel/linux/modules/netfilter.mk"
-
-    if [ ! -f "$include_netfilter_mk" ]; then
-        echo "Netfilter include file not found: $include_netfilter_mk" >&2
-        return 1
-    fi
-
-    if [ ! -f "$netfilter_mk" ]; then
-        echo "Netfilter makefile not found: $netfilter_mk" >&2
-        return 1
-    fi
-
-    if netfilter_kmod_clash_include_fixed "$include_netfilter_mk" && \
-       grep -q 'DEPENDS:=+(!(LINUX_6_12||LINUX_6_18)):kmod-iptables' "$netfilter_mk"; then
-        echo "Netfilter kmod clash workaround already applied"
-        return 0
-    fi
-
-    if grep -q '$(eval $(if $(NF_KMOD),$(call nf_add,NF_IPT,CONFIG_IP_NF_IPTABLES, $(P_V4)ip_tables),))' "$include_netfilter_mk"; then
-        echo "Updating NF_IPT mapping for Linux 6.12/6.18..."
-        sed -i 's@$(eval $(if $(NF_KMOD),$(call nf_add,NF_IPT,CONFIG_IP_NF_IPTABLES, $(P_V4)ip_tables),))@$(eval $(if $(NF_KMOD),$(call nf_add,NF_IPT,CONFIG_IP_NF_IPTABLES, $(P_V4)ip_tables, lt 6.12),))@' "$include_netfilter_mk"
-        sed -i '/CONFIG_IP_NF_IPTABLES, $(P_V4)ip_tables, lt 6\.12)/a$(eval $(if $(NF_KMOD),$(call nf_add,NF_IPT,CONFIG_IP_NF_IPTABLES_LEGACY, $(P_V4)ip_tables, ge 6.12),))' "$include_netfilter_mk"
-    fi
-
-    if grep -q '$(eval $(if $(NF_KMOD),,$(call nf_add,IPT_CORE,CONFIG_IP_NF_IPTABLES, xt_standard ipt_icmp xt_tcp xt_udp xt_comment xt_set xt_SET)))' "$include_netfilter_mk"; then
-        echo "Updating IPT_CORE userland mapping for Linux 6.12/6.18..."
-        sed -i 's@$(eval $(if $(NF_KMOD),,$(call nf_add,IPT_CORE,CONFIG_IP_NF_IPTABLES, xt_standard ipt_icmp xt_tcp xt_udp xt_comment xt_set xt_SET)))@$(eval $(if $(NF_KMOD),,$(call nf_add,IPT_CORE,CONFIG_IP_NF_IPTABLES, xt_standard ipt_icmp xt_tcp xt_udp xt_comment xt_set xt_SET, lt 6.12)))@' "$include_netfilter_mk"
-        sed -i '/CONFIG_IP_NF_IPTABLES, xt_standard ipt_icmp xt_tcp xt_udp xt_comment xt_set xt_SET, lt 6\.12))/a$(eval $(if $(NF_KMOD),,$(call nf_add,IPT_CORE,CONFIG_IP_NF_IPTABLES_LEGACY, xt_standard ipt_icmp xt_tcp xt_udp xt_comment xt_set xt_SET, ge 6.12)))' "$include_netfilter_mk"
-    fi
-
-    if grep -q '$(eval $(if $(NF_KMOD),$(call nf_add,NF_IPT6,CONFIG_IP6_NF_IPTABLES, $(P_V6)ip6_tables),))' "$include_netfilter_mk"; then
-        echo "Updating NF_IPT6 mapping for Linux 6.12/6.18..."
-        sed -i 's@$(eval $(if $(NF_KMOD),$(call nf_add,NF_IPT6,CONFIG_IP6_NF_IPTABLES, $(P_V6)ip6_tables),))@$(eval $(if $(NF_KMOD),$(call nf_add,NF_IPT6,CONFIG_IP6_NF_IPTABLES, $(P_V6)ip6_tables, lt 6.12),))@' "$include_netfilter_mk"
-        sed -i '/CONFIG_IP6_NF_IPTABLES, $(P_V6)ip6_tables, lt 6\.12)/a$(eval $(if $(NF_KMOD),$(call nf_add,NF_IPT6,CONFIG_IP6_NF_IPTABLES_LEGACY, $(P_V6)ip6_tables, ge 6.12),))' "$include_netfilter_mk"
-    fi
-
-    if grep -q '$(eval $(if $(NF_KMOD),,$(call nf_add,IPT_IPV6,CONFIG_IP6_NF_IPTABLES, ip6t_icmp6)))' "$include_netfilter_mk"; then
-        echo "Updating IPT_IPV6 userland mapping for Linux 6.12/6.18..."
-        sed -i 's@$(eval $(if $(NF_KMOD),,$(call nf_add,IPT_IPV6,CONFIG_IP6_NF_IPTABLES, ip6t_icmp6)))@$(eval $(if $(NF_KMOD),,$(call nf_add,IPT_IPV6,CONFIG_IP6_NF_IPTABLES, ip6t_icmp6, lt 6.12)))@' "$include_netfilter_mk"
-        sed -i '/CONFIG_IP6_NF_IPTABLES, ip6t_icmp6, lt 6\.12))/a$(eval $(if $(NF_KMOD),,$(call nf_add,IPT_IPV6,CONFIG_IP6_NF_IPTABLES_LEGACY, ip6t_icmp6, ge 6.12)))' "$include_netfilter_mk"
-    fi
-
-    if grep -q 'DEPENDS:=+!LINUX_6_12:kmod-iptables' "$netfilter_mk"; then
-        echo "Applying netfilter kmod clash workaround for Linux 6.12/6.18..."
-        sed -i 's/DEPENDS:=+!LINUX_6_12:kmod-iptables/DEPENDS:=+(!(LINUX_6_12||LINUX_6_18)):kmod-iptables/' "$netfilter_mk"
-    fi
-
-    if grep -q 'DEPENDS:=+(!LINUX_6_12&&!LINUX_6_18):kmod-iptables' "$netfilter_mk"; then
-        echo "Normalizing netfilter kmod clash workaround expression..."
-        sed -i 's/DEPENDS:=+(!LINUX_6_12\&\&!LINUX_6_18):kmod-iptables/DEPENDS:=+(!(LINUX_6_12||LINUX_6_18)):kmod-iptables/' "$netfilter_mk"
-    fi
-
-    if grep -q 'DEPENDS:=+kmod-iptables' "$netfilter_mk"; then
-        echo "Applying netfilter kmod clash workaround for Linux 6.12/6.18..."
-        sed -i 's/DEPENDS:=+kmod-iptables/DEPENDS:=+(!(LINUX_6_12||LINUX_6_18)):kmod-iptables/' "$netfilter_mk"
-    fi
-
-    if grep -q 'DEPENDS:=+(!(LINUX_6_12||LINUX_6_18)):kmod-iptables' "$netfilter_mk"; then
-        if netfilter_kmod_clash_include_fixed "$include_netfilter_mk"; then
-            return 0
-        fi
-
-        echo "Netfilter include clash workaround target not found in $include_netfilter_mk" >&2
-        return 1
-    fi
-
-    if netfilter_kmod_clash_include_fixed "$include_netfilter_mk"; then
-        echo "Netfilter kmod-iptables dependency target not present; include workaround already applied"
-        return 0
-    fi
-
-    echo "Netfilter kmod clash workaround target not found in $netfilter_mk" >&2
-    return 1
-}
-
-
 install_pbr_cmcc() {
     local pbr_pkg_dir="$BUILD_DIR/package/feeds/packages/pbr"
     local pbr_dir="$pbr_pkg_dir/files/usr/share/pbr"
@@ -235,8 +52,8 @@ install_pbr_cmcc() {
 
     if [ -d "$pbr_pkg_dir" ]; then
         echo "正在安装 PBR CMCC 配置文件..."
-        install -Dm644 "$BASE_PATH/patches/pbr.user.cmcc" "$pbr_dir/pbr.user.cmcc"
-        install -Dm644 "$BASE_PATH/patches/pbr.user.cmcc6" "$pbr_dir/pbr.user.cmcc6"
+        install -Dm644 "$BASE_PATH/files/pbr/pbr.user.cmcc" "$pbr_dir/pbr.user.cmcc"
+        install -Dm644 "$BASE_PATH/files/pbr/pbr.user.cmcc6" "$pbr_dir/pbr.user.cmcc6"
 
         if [ -f "$pbr_makefile" ]; then
             if ! grep -q "pbr.user.cmcc" "$pbr_makefile"; then
@@ -265,7 +82,6 @@ config include\\
         fi
     fi
 }
-
 
 fix_pbr_ip_forward() {
     local pbr_pkg_dir="$BUILD_DIR/package/feeds/packages/pbr"
@@ -335,7 +151,6 @@ PKG_MIRROR_HASH:=skip' "$makefile_path"
     fi
 }
 
-
 set_nginx_default_config() {
     local nginx_config_path="$BUILD_DIR/feeds/packages/net/nginx-util/files/nginx.config"
     if [ -f "$nginx_config_path" ]; then
@@ -384,7 +199,6 @@ EOF
     fi
 }
 
-
 update_uwsgi_limit_as() {
     local cgi_io_ini="$BUILD_DIR/feeds/packages/net/uwsgi/files-luci-support/luci-cgi_io.ini"
     local webui_ini="$BUILD_DIR/feeds/packages/net/uwsgi/files-luci-support/luci-webui.ini"
@@ -395,5 +209,21 @@ update_uwsgi_limit_as() {
 
     if [ -f "$webui_ini" ]; then
         sed -i 's/^limit-as = .*/limit-as = 8192/g' "$webui_ini"
+    fi
+}
+
+update_nginx_ubus_module() {
+    local makefile_path="$BUILD_DIR/feeds/packages/net/nginx/Makefile"
+    local source_date="2024-03-02"
+    local source_version="564fa3e9c2b04ea298ea659b793480415da26415"
+    local mirror_hash="92c9ab94d88a2fe8d7d1e8a15d15cfc4d529fdc357ed96d22b65d5da3dd24d7f"
+
+    if [ -f "$makefile_path" ]; then
+        sed -i "s/SOURCE_DATE:=2020-09-06/SOURCE_DATE:=$source_date/g" "$makefile_path"
+        sed -i "s/SOURCE_VERSION:=b2d7260dcb428b2fb65540edb28d7538602b4a26/SOURCE_VERSION:=$source_version/g" "$makefile_path"
+        sed -i "s/MIRROR_HASH:=515bb9d355ad80916f594046a45c190a68fb6554d6795a54ca15cab8bdd12fda/MIRROR_HASH:=$mirror_hash/g" "$makefile_path"
+        echo "已更新 nginx-mod-ubus 模块的 SOURCE_DATE, SOURCE_VERSION 和 MIRROR_HASH。"
+    else
+        echo "错误：未找到 $makefile_path 文件，无法更新 nginx-mod-ubus 模块。" >&2
     fi
 }

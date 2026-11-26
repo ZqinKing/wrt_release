@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install_feeds 前的 feed 工作树修正。
+# feed 软件包源码与依赖修正。
 
 remove_unwanted_packages() {
     # 移除由 custom_feed 接管、冲突或含递归 Kconfig 的未用上游包。
@@ -57,22 +57,6 @@ remove_unwanted_packages() {
     fi
 }
 
-
-update_homeproxy() {
-    local repo_url="https://github.com/immortalwrt/homeproxy.git"
-    local target_dir="$(get_custom_feed_worktree_dir)/luci-app-homeproxy"
-
-    if [ -d "$target_dir" ]; then
-        echo "正在更新 homeproxy..."
-        rm -rf "$target_dir"
-        if ! git_retry clone --depth 1 "$repo_url" "$target_dir"; then
-            echo "错误：从 $repo_url 克隆 homeproxy 仓库失败" >&2
-            exit 1
-        fi
-    fi
-}
-
-
 update_lucky() {
     local lucky_repo_url="https://github.com/gdy666/luci-app-lucky.git"
     local target_custom_feed_dir="$(get_custom_feed_worktree_dir)"
@@ -118,7 +102,7 @@ update_lucky() {
     fi
 
     local version
-    version=$(find "$BASE_PATH/patches" -name "lucky_*.tar.gz" -printf "%f\n" | head -n 1 | sed -n 's/^lucky_\(.*\)_Linux.*$/\1/p')
+    version=$(find "$BASE_PATH/assets" -name "lucky_*.tar.gz" -printf "%f\n" | head -n 1 | sed -n 's/^lucky_\(.*\)_Linux.*$/\1/p')
     if [ -z "$version" ]; then
         echo "Warning: 未找到 lucky 补丁文件，跳过更新。" >&2
         return 0
@@ -131,7 +115,7 @@ update_lucky() {
     fi
 
     echo "正在更新 lucky Makefile..."
-    local patch_line="\\t[ -f \$(TOPDIR)/../wrt_core/patches/lucky_${version}_Linux_\$(LUCKY_ARCH)_wanji.tar.gz ] && install -Dm644 \$(TOPDIR)/../wrt_core/patches/lucky_${version}_Linux_\$(LUCKY_ARCH)_wanji.tar.gz \$(DL_DIR)/\$(PKG_SOURCE)"
+    local patch_line="\\t[ -f \$(TOPDIR)/../wrt_core/assets/lucky_${version}_Linux_\$(LUCKY_ARCH)_wanji.tar.gz ] && install -Dm644 \$(TOPDIR)/../wrt_core/assets/lucky_${version}_Linux_\$(LUCKY_ARCH)_wanji.tar.gz \$(DL_DIR)/\$(PKG_SOURCE)"
 
     if grep -q "Build/Prepare" "$makefile_path"; then
         sed -i "/Build\\/Prepare/a\\$patch_line" "$makefile_path"
@@ -142,7 +126,6 @@ update_lucky() {
     fi
 }
 
-
 remove_attendedsysupgrade() {
     find "$BUILD_DIR/feeds/luci/collections" -name "Makefile" | while read -r makefile; do
         if grep -q "luci-app-attendedsysupgrade" "$makefile"; then
@@ -151,25 +134,6 @@ remove_attendedsysupgrade() {
         fi
     done
 }
-
-
-fix_mkpkg_format_invalid() {
-    local custom_feed_worktree_dir
-    custom_feed_worktree_dir=$(get_custom_feed_worktree_dir)
-
-    if [[ $BUILD_DIR =~ "imm-nss" ]]; then
-        if [ -f "$custom_feed_worktree_dir/v2ray-geodata/Makefile" ]; then
-            sed -i 's/VER)-\$(PKG_RELEASE)/VER)-r\$(PKG_RELEASE)/g' "$custom_feed_worktree_dir/v2ray-geodata/Makefile"
-        fi
-        if [ -f "$custom_feed_worktree_dir/luci-lib-taskd/Makefile" ]; then
-            sed -i 's/>=1\.0\.3-1/>=1\.0\.3-r1/g' "$custom_feed_worktree_dir/luci-lib-taskd/Makefile"
-        fi
-        if [ -f "$custom_feed_worktree_dir/luci-app-openclash/Makefile" ]; then
-            sed -i 's/PKG_RELEASE:=beta/PKG_RELEASE:=1/g' "$custom_feed_worktree_dir/luci-app-openclash/Makefile"
-        fi
-    fi
-}
-
 
 update_tcping() {
     local tcping_path="$(get_custom_feed_worktree_dir)/tcping/Makefile"
@@ -184,7 +148,6 @@ update_tcping() {
     fi
 }
 
-
 update_mosdns_deconfig() {
     local mosdns_conf="$(get_custom_feed_worktree_dir)/luci-app-mosdns/root/etc/config/mosdns"
     if [ -d "${mosdns_conf%/*}" ] && [ -f "$mosdns_conf" ]; then
@@ -192,7 +155,6 @@ update_mosdns_deconfig() {
         sed -i 's/5335/5336/g' "$mosdns_conf"
     fi
 }
-
 
 fix_netwiz_permissions() {
     local package_dir="$(get_custom_feed_worktree_dir)/luci-app-netwiz"
@@ -216,7 +178,6 @@ fix_netwiz_permissions() {
     done
 }
 
-
 update_oaf_deconfig() {
     local init_path="$(get_custom_feed_worktree_dir)/open-app-filter/files/appfilter.init"
 
@@ -238,7 +199,6 @@ update_oaf_deconfig() {
     fi
 }
 
-
 fix_easytier_mk() {
     local mk_path="$(get_custom_feed_worktree_dir)/luci-app-easytier/easytier/Makefile"
     if [ -f "$mk_path" ]; then
@@ -246,12 +206,70 @@ fix_easytier_mk() {
     fi
 }
 
+fix_compile_coremark() {
+    local file="$BUILD_DIR/feeds/packages/utils/coremark/Makefile"
+    if [ -d "$(dirname "$file")" ] && [ -f "$file" ]; then
+        sed -i 's/mkdir \$/mkdir -p \$/g' "$file"
+    fi
+}
 
-remove_tweaked_packages() {
-    local target_mk="$BUILD_DIR/include/target.mk"
-    if [ -f "$target_mk" ]; then
-        if grep -q "^DEFAULT_PACKAGES += \$(DEFAULT_PACKAGES.tweak)" "$target_mk"; then
-            sed -i 's/DEFAULT_PACKAGES += $(DEFAULT_PACKAGES.tweak)/# DEFAULT_PACKAGES += $(DEFAULT_PACKAGES.tweak)/g' "$target_mk"
+fix_rust_compile_error() {
+    local rust_makefile="$BUILD_DIR/feeds/packages/lang/rust/Makefile"
+    [ -f "$rust_makefile" ] || return 0
+
+    sed -i 's/download-ci-llvm=true/download-ci-llvm=false/g' "$rust_makefile"
+
+    if [[ "$REPO_URL" == "https://github.com/padavanonly/immortalwrt-mt798x-6.6.git" &&
+          "$REPO_BRANCH" == "openwrt-24.10-6.6" ]]; then
+        local rust_min_version="1.94.1"
+        local rust_package_version
+        local lowest_version
+        rust_package_version=$(sed -n 's/^PKG_VERSION:=//p' "$rust_makefile")
+
+        if [[ "$rust_package_version" == "1.94.0" ]]; then
+            sed -i \
+                -e 's/^PKG_VERSION:=1\.94\.0$/PKG_VERSION:=1.94.1/' \
+                -e 's/^PKG_HASH:=.*/PKG_HASH:=174fce10ce012317ca995810296d8af199318838180b03d68a853e0f02d4b571/' \
+                "$rust_makefile"
+            rust_package_version=$(sed -n 's/^PKG_VERSION:=//p' "$rust_makefile")
         fi
+
+        lowest_version=$(printf '%s\n' "$rust_min_version" "$rust_package_version" | sort -V | head -n 1)
+        if [[ "$lowest_version" != "$rust_min_version" ]]; then
+            echo "错误：padavanonly 源码需要 Rust $rust_min_version 或更新版本，当前 Rust 包版本为 $rust_package_version" >&2
+            return 1
+        fi
+    fi
+}
+
+fix_cups_libcups_avahi_depends() {
+    local makefile_path="$(get_custom_feed_worktree_dir)/cups/Makefile"
+
+    # Check if file exists
+    if [ ! -f "$makefile_path" ]; then
+        echo "cups: libcups Makefile not found, skip: $makefile_path"
+        return 0
+    fi
+
+    # Check if both deps already present within the libcups block only
+    if sed -n '/^[[:space:]]*define Package\/libcups[[:space:]]*$/,/^[[:space:]]*endef[[:space:]]*$/p' "$makefile_path" | grep -q "+libavahi-client" && \
+       sed -n '/^[[:space:]]*define Package\/libcups[[:space:]]*$/,/^[[:space:]]*endef[[:space:]]*$/p' "$makefile_path" | grep -q "+libavahi"; then
+        echo "cups: libcups avahi deps already present, skip"
+        return 0
+    fi
+
+    # Use scoped sed to modify DEPENDS only within Package/libcups block
+    sed -i '/^[[:space:]]*define Package\/libcups[[:space:]]*$/,/^[[:space:]]*endef[[:space:]]*$/ {
+        /DEPENDS:=/ s/$/ +libavahi-client +libavahi/
+    }' "$makefile_path"
+
+    echo "cups: added missing avahi deps to Package/libcups"
+    return 0
+}
+
+fix_easytier_lua() {
+    local file_path="$(get_custom_feed_package_dir)/luci-app-easytier/luasrc/model/cbi/easytier.lua"
+    if [ -f "$file_path" ]; then
+        sed -i 's/util.pcdata/xml.pcdata/g' "$file_path"
     fi
 }

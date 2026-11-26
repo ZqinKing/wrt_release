@@ -108,7 +108,7 @@ GitHub Actions 的手动构建也提供 `add_fragments` 与 `remove_fragments` �
 构建时会按顺序组合配置：
 
 1. 设备专用 `.config`
-2. `compile_base.config`
+2. `wrt_core/deconfig/common/compile_base.config`
 3. `wrt_core/deconfig/fragments/<name>.config` 中的有效配置片段
 
 默认片段由 `compilecfg/*.ini` 的 `CONFIG_FRAGMENTS` 指定：
@@ -135,12 +135,16 @@ https://github.com/kenzok8/small-package.git
 - `firmware/`：完整构建后的固件输出目录，由脚本自动创建和刷新。
 - `wrt_core/build_container.sh`：容器内构建入口。
 - `wrt_core/update.sh`：源码更新、feeds 调整、软件包同步和补丁应用主流程。
-- `wrt_core/pre_clone_action.sh`：GitHub Actions 预克隆辅助脚本。
+- `wrt_core/ci/`：GitHub Actions 环境初始化与预克隆入口。
 - `wrt_core/compilecfg/`：设备构建元信息 `.ini`。
-- `wrt_core/deconfig/`：设备和共享默认配置 `.config`。
+- `wrt_core/deconfig/`：设备配置；`common/` 保存共享基础配置。
 - `wrt_core/deconfig/fragments/`：可组合配置片段。
-- `wrt_core/modules/`：模块化脚本，包括仓库准备、网络重试、feeds/custom_feed、源码修正、LuCI 修正、服务修正、验证、Docker、CUPS 等静态职责模块。
-- `wrt_core/patches/`：补丁、默认设置、Wi-Fi 初始化、NSS 诊断、PBR 规则和其他构建时注入文件。
+- `wrt_core/modules/`：按源码同步、目标平台、feed 包、LuCI、服务和 Netfilter 分类的函数模块；`lib/` 提供共享辅助函数。`update.sh` 保持显式阶段顺序，配置钩子分别在 `make defconfig` 前后执行。
+- `wrt_core/patches/`：应用到上游源码的补丁文件。
+- `wrt_core/files/`：运行时文件，分为 `uci-defaults/`、`init.d/`、`sbin/`、`pbr/` 和 `misc/`。
+- `wrt_core/assets/`：保留离线可用性的 Lucky 二进制归档。
+
+`x64_immwrt` 使用 `imm-x64/`，`zn_m2_libwrt` 使用 `libwrt/`。已有旧构建目录不会自动迁移或删除；启用新目录后会重新准备源码。
 
 ## 9. OAF（应用过滤）功能使用说明
 
