@@ -34,13 +34,39 @@ clean_up() {
     echo "1" >"tmp/.build"
 }
 
+validate_build_repo() {
+    local build_root
+    local repo_root
+    local source_url
+    local expected_url
+    local orchestrator_root
+    build_root=$(cd "$BUILD_DIR" && pwd -P) || return 1
+    repo_root=$(git -C "$build_root" rev-parse --show-toplevel) || return 1
+    repo_root=$(cd "$repo_root" && pwd -P) || return 1
+    orchestrator_root=$(cd "$BASE_PATH/.." && pwd -P) || return 1
+    if [[ "$repo_root" != "$build_root" ||
+          "$orchestrator_root/" == "$build_root/"* ]]; then
+        echo "错误：构建目录不是独立的源码仓库：$BUILD_DIR" >&2
+        return 1
+    fi
+    source_url=$(git -C "$build_root" remote get-url origin) || return 1
+    expected_url="${REPO_URL%/}"
+    expected_url="${expected_url%.git}"
+    source_url="${source_url%/}"
+    source_url="${source_url%.git}"
+    if [[ "$source_url" != "$expected_url" ]]; then
+        echo "错误：构建仓库来源不匹配：实际 $source_url，预期 $expected_url" >&2
+        return 1
+    fi
+}
+
 
 reset_feeds_conf() {
     # 所有源码修正都基于远端分支或指定提交的干净状态。
-    git_retry reset --hard "origin/$REPO_BRANCH"
-    git_retry clean -f -d
-    git_retry pull
+    git_retry -C "$BUILD_DIR" reset --hard "origin/$REPO_BRANCH"
+    git_retry -C "$BUILD_DIR" clean -f -d
+    git_retry -C "$BUILD_DIR" pull
     if [[ $COMMIT_HASH != "none" ]]; then
-        git_retry checkout "$COMMIT_HASH"
+        git_retry -C "$BUILD_DIR" checkout "$COMMIT_HASH"
     fi
 }

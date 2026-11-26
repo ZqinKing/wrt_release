@@ -148,7 +148,6 @@ apply_hash_fixes() {
 
 update_ath11k_fw() {
     local makefile="$BUILD_DIR/package/firmware/ath11k-firmware/Makefile"
-    local new_mk="$BASE_PATH/patches/ath11k_fw.mk"
     local ipq60_target="$BUILD_DIR/target/linux/qualcommax/ipq60xx/target.mk"
     local ipq807_target="$BUILD_DIR/target/linux/qualcommax/ipq807x/target.mk"
 
@@ -157,15 +156,21 @@ update_ath11k_fw() {
 
     if [ -d "$(dirname "$makefile")" ]; then
         echo "正在更新 ath11k-firmware Makefile..."
-        if ! curl_retry -fsSL -o "$new_mk" "$url"; then
-            echo "错误：从 $url 下载 ath11k-firmware Makefile 失败" >&2
-            exit 1
-        fi
-        if [ ! -s "$new_mk" ]; then
-            echo "错误：下载的 ath11k-firmware Makefile 为空文件" >&2
-            exit 1
-        fi
-        mv -f "$new_mk" "$makefile"
+        (
+            new_mk=$(mktemp) || exit 1
+            trap 'rm -f "$new_mk"' EXIT
+            trap 'exit 1' HUP INT TERM
+            if ! curl_retry -fsSL -o "$new_mk" "$url"; then
+                echo "错误：从 $url 下载 ath11k-firmware Makefile 失败" >&2
+                exit 1
+            fi
+            if [ ! -s "$new_mk" ]; then
+                echo "错误：下载的 ath11k-firmware Makefile 为空文件" >&2
+                exit 1
+            fi
+            chmod --reference="$makefile" "$new_mk" || exit 1
+            mv -f "$new_mk" "$makefile" || exit 1
+        ) || return 1
 
         if [ -f "$ipq60_target" ]; then
             sed -i 's/ath11k-firmware-ipq6018\([^-[:alnum:]_]\|$\)/ath11k-firmware-ipq6018-ddwrt\1/g' "$ipq60_target"

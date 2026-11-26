@@ -26,7 +26,7 @@ GOLANG_BRANCH="27.x"
 THEME_SET="vantage"
 LAN_ADDR="192.168.1.1"
 
-SCRIPT_DIR=$(cd $(dirname $0) && pwd)
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 BASE_PATH=${BASE_PATH:-$SCRIPT_DIR}
 
 # 按静态职责加载模块，执行顺序仍由本脚本统一控制。
@@ -50,6 +50,8 @@ source "$SCRIPT_DIR/modules/service_fixes.sh"
 stage_repo_checkout() {
     # 从干净的上游源码树开始，保证后续修正基线一致。
     clone_repo
+    validate_build_repo
+    cd "$BUILD_DIR"
     clean_up
     reset_feeds_conf
 }

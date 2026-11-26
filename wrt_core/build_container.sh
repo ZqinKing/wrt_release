@@ -49,7 +49,7 @@ resolve_build_dir() {
 
 if [ -z "$Dev" ]; then
     echo "Usage: $0 <dev_name> [debug]"
-    echo "或者运行 ./start.sh 进行交互式选择"
+    echo "或者运行 ./build.sh 进行交互式选择"
     exit 1
 fi
 
