@@ -15,7 +15,7 @@ sync_sparse_packages_to_feed_dir() {
     local pkg
     local target_pkg
 
-    tmp_dir=$(mktemp -d)
+    tmp_dir=$(mktemp -d) || return 1
 
     if [ -n "$repo_branch" ]; then
         clone_args+=(-b "$repo_branch")
@@ -64,10 +64,14 @@ sync_repo_root_package_to_feed_dir() {
     local target_dir="$3"
     local repo_label="$4"
     local package_name="$5"
+    local keep_git="${6:-0}"
     local tmp_dir
-    local clone_args=(clone --depth 1 --filter=blob:none)
+    local clone_args=(clone --depth 1)
+    if [[ "$keep_git" != "1" ]]; then
+        clone_args+=(--filter=blob:none)
+    fi
 
-    tmp_dir=$(mktemp -d)
+    tmp_dir=$(mktemp -d) || return 1
 
     if [ -n "$repo_branch" ]; then
         clone_args+=(-b "$repo_branch")
@@ -88,7 +92,9 @@ sync_repo_root_package_to_feed_dir() {
         return 1
     fi
 
-    rm -rf "$tmp_dir/.git"
+    if [[ "$keep_git" != "1" ]]; then
+        rm -rf "$tmp_dir/.git"
+    fi
     rm -rf "$target_dir/$package_name"
 
     if ! mv "$tmp_dir" "$target_dir/$package_name"; then

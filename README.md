@@ -127,6 +127,8 @@ GitHub Actions 的手动构建也提供 `add_fragments` 与 `remove_fragments` �
 https://github.com/kenzok8/small-package.git
 ```
 
+HomeProxy、AdGuardHome LuCI 和 TCPing 直接从各自指定仓库同步，不再先取 small-package 再覆盖。HomeProxy 和 AdGuardHome 保留浅克隆 Git 元数据，供 LuCI 生成版本；CUPS 依赖修正在最终 feeds 索引更新前完成。
+
 相关增删和同步逻辑位于 `wrt_core/update.sh` 编排的 `wrt_core/modules/` 静态阶段。配置片段只选择 Kconfig，不负责 clone 仓库、修改 feeds 或安装 feeds。
 
 ## 8. 项目结构说明

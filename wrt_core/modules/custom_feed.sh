@@ -82,16 +82,16 @@ install_custom_feed() {
     local base_custom_feed_packages=(
         xray-core xray-plugin dns2tcp dns2socks haproxy hysteria \
         naiveproxy shadowsocks-rust sing-box v2ray-core v2ray-geodata geoview v2ray-plugin \
-        tuic-client chinadns-ng ipt2socks tcping trojan-plus simple-obfs shadowsocksr-libev \
-        v2dat adguardhome luci-app-adguardhome ddns-go \
+        tuic-client chinadns-ng ipt2socks trojan-plus simple-obfs shadowsocksr-libev \
+        v2dat adguardhome ddns-go \
         luci-app-ddns-go taskd luci-lib-xterm luci-lib-taskd luci-app-cloudflarespeedtest netdata luci-app-netdata \
-        lucky luci-app-lucky luci-app-openclash luci-app-homeproxy luci-app-amlogic \
+        lucky luci-app-lucky luci-app-openclash luci-app-amlogic \
         oaf open-app-filter luci-app-oaf easytier luci-app-easytier \
         msd_lite luci-app-msd_lite cups luci-app-cupsd
     )
     local required_feed_dirs=(
         cups tcping v2ray-geodata luci-lib-taskd luci-app-openclash
-        luci-app-netwiz luci-app-homeproxy luci-app-mosdns geo2txt
+        luci-app-netwiz luci-app-homeproxy luci-app-adguardhome luci-app-mosdns geo2txt
         luci-app-passwall nikki luci-app-nikki mihomo-meta
         open-app-filter luci-app-oaf lucky luci-app-lucky luci-app-easytier
         luci-app-emmc-health luci-app-airoha-npu
@@ -114,6 +114,7 @@ install_custom_feed() {
 
     # 统一从外部仓库同步指定包，避免分散维护 feeds.conf。
     custom_feed_sources=(
+        "Openwrt-Passwall/openwrt-passwall-packages|https://github.com/Openwrt-Passwall/openwrt-passwall-packages.git|main|tcping"
         "kenzok8/small-package|https://github.com/kenzok8/small-package.git||${base_custom_feed_packages[*]}"
         "huchd0/luci-app-netwiz|https://github.com/huchd0/luci-app-netwiz.git|master|luci-app-netwiz"
         "sbwml/luci-app-mosdns|https://github.com/sbwml/luci-app-mosdns.git|v5|mosdns luci-app-mosdns geo2txt"
@@ -141,6 +142,16 @@ install_custom_feed() {
             return 1
         fi
     done
+
+    if ! sync_repo_root_package_to_feed_dir "https://github.com/immortalwrt/homeproxy.git" "" "$custom_feed_dir" "immortalwrt/homeproxy" "luci-app-homeproxy" 1; then
+        rm -rf "$custom_feed_dir"
+        return 1
+    fi
+
+    if ! sync_repo_root_package_to_feed_dir "https://github.com/ZqinKing/luci-app-adguardhome.git" "" "$custom_feed_dir" "ZqinKing/luci-app-adguardhome" "luci-app-adguardhome" 1; then
+        rm -rf "$custom_feed_dir"
+        return 1
+    fi
 
     if ! sync_repo_root_package_to_feed_dir "https://github.com/adminchenyu/eMMC-Health.git" "main" "$custom_feed_dir" "adminchenyu/eMMC-Health" "luci-app-emmc-health"; then
         rm -rf "$custom_feed_dir"

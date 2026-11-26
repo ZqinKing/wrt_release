@@ -77,7 +77,6 @@ stage_custom_feed_prepare() {
 
 stage_pre_install_source_fixes() {
     # 这里仅修改源码树与 feeds/*，不能依赖 package/feeds/*。
-    update_homeproxy
     fix_default_set
     fix_miniupnpd
     update_golang
@@ -89,7 +88,6 @@ stage_pre_install_source_fixes() {
     update_affinity_script
     update_ath11k_fw
     change_cpuusage
-    update_tcping
     add_ax6600_led
     set_custom_task
     apply_passwall_fixes
@@ -121,6 +119,7 @@ stage_pre_install_source_fixes() {
     remove_attendedsysupgrade
     fix_kconfig_recursive_dependency
     fix_nf_conntrack_bridge_package_split
+    fix_cups_libcups_avahi_depends
 }
 
 stage_feeds_install() {
@@ -132,9 +131,7 @@ stage_post_install_package_fixes() {
     # 这里处理已安装到 package/feeds/* 的包和最终一致性检查。
     verify_custom_feed_installed_paths
     docker_stack_sync_nftables_compat "$BUILD_DIR" "0"
-    fix_cups_libcups_avahi_depends
     fix_easytier_lua
-    update_adguardhome
     update_script_priority
     update_geoip
     fix_openssl_ktls

@@ -1,33 +1,6 @@
 #!/usr/bin/env bash
 # 上游源码与单包仓库同步。
 
-update_homeproxy() {
-    local repo_url="https://github.com/immortalwrt/homeproxy.git"
-    local target_dir="$(get_custom_feed_worktree_dir)/luci-app-homeproxy"
-
-    if [ -d "$target_dir" ]; then
-        echo "正在更新 homeproxy..."
-        rm -rf "$target_dir"
-        if ! git_retry clone --depth 1 "$repo_url" "$target_dir"; then
-            echo "错误：从 $repo_url 克隆 homeproxy 仓库失败" >&2
-            exit 1
-        fi
-    fi
-}
-
-update_adguardhome() {
-    local adguardhome_dir="$(get_custom_feed_package_dir)/luci-app-adguardhome"
-    local repo_url="https://github.com/ZqinKing/luci-app-adguardhome.git"
-
-    echo "正在更新 luci-app-adguardhome..."
-    rm -rf "$adguardhome_dir" 2>/dev/null
-
-    if ! git_retry clone --depth 1 "$repo_url" "$adguardhome_dir"; then
-        echo "错误：从 $repo_url 克隆 luci-app-adguardhome 仓库失败" >&2
-        exit 1
-    fi
-}
-
 update_golang() {
     if [[ -d ./feeds/packages/lang/golang ]]; then
         echo "正在更新 golang 软件包..."
@@ -223,10 +196,6 @@ update_dockerman() {
         cd .. || return
         \rm -rf dockerman
         cd "$BUILD_DIR"
-
-        if declare -F docker_stack_sync_dockerman_nftables_compat >/dev/null 2>&1; then
-            docker_stack_sync_dockerman_nftables_compat "$BUILD_DIR" "0" || return 1
-        fi
 
         echo "dockerman 更新完成"
     fi
