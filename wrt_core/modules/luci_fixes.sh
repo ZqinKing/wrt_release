@@ -61,8 +61,10 @@ update_vantage() {
     rm -rf "$tmp_dir"
 
     local compatibility_patch="$BASE_PATH/patches/luci-theme-vantage-bootstrap-migration.patch"
-    if [[ "$REPO_URL" == "https://github.com/padavanonly/immortalwrt-mt798x-6.6.git" &&
-          "$REPO_BRANCH" == "openwrt-24.10-6.6" ]]; then
+    if [[ ( "$REPO_URL" == "https://github.com/padavanonly/immortalwrt-mt798x-6.6.git" &&
+            "$REPO_BRANCH" == "openwrt-24.10-6.6" ) ||
+          ( "$REPO_URL" == "https://github.com/ZqinKing/immortalwrt.git" &&
+            "$REPO_BRANCH" == "sn-r1" ) ]]; then
         compatibility_patch="$BASE_PATH/patches/luci-theme-vantage-padavanonly-migration.patch"
     fi
     local boot_script_dir="$BUILD_DIR/package/base-files/files"
